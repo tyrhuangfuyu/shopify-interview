@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -538,6 +537,31 @@
   .file-drop.drag-over { border-color: var(--primary); background: var(--info-bg); border-style: solid; }
   .file-preview { display: flex; align-items: center; gap: 12px; }
   .file-preview img { max-height: 64px; border-radius: var(--r-1); }
+  .file-upload-progress {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-2);
+    text-align: left;
+  }
+  .file-upload-progress-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: 8px; font-size: 12px; color: var(--text-2);
+  }
+  .file-upload-progress-name {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-weight: 550; color: var(--text);
+  }
+  .file-upload-progress-pct { flex-shrink: 0; font-weight: 650; color: var(--text); }
+  .file-upload-progress-track {
+    height: 8px; background: #e5e5e5; border-radius: var(--r-full); overflow: hidden;
+  }
+  .file-upload-progress-fill {
+    height: 100%; width: 0%; background: var(--primary); border-radius: var(--r-full);
+    transition: width .18s ease;
+  }
+  .file-upload-progress-status { margin-top: 7px; font-size: 11px; color: var(--text-3); }
 
   /* Address */
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -1238,13 +1262,12 @@ const SCHEMA = [
         allowCustom: true,
         customPlaceholder: '其他配送方式',
         options: [
-          { value: 'home_delivery', bg: '#4A4A4A', badge: '宅配', label: '宅配到府', desc: '配送至顧客指定地址' },
-          { value: 'cvs_normal', iconUrl: SHIPPING_ICONS.cvs, label: '超商取貨（一般）', desc: '顧客於 7-ELEVEN、全家等超商門市取貨' },
-          { value: 'cvs_bulk', iconUrl: SHIPPING_ICONS.cvs, label: '超商取貨（大宗）', desc: '「大宗」指商家有較大量、批次出貨需求，通常會以批次方式建立與交寄超商物流單；實際適用門檻依物流服務商方案而定。' },
-          { value: 'cvs_cod', iconUrl: SHIPPING_ICONS.cvs, label: '超商取貨付款', desc: '顧客到超商取貨時再付款' },
-          { value: 'post', iconUrl: SHIPPING_ICONS.post, label: '郵寄', desc: '透過郵局國內包裹或其他郵寄服務配送' },
-          { value: 'same_day', bg: '#EF7C00', badge: '即時', label: '當日 / 即時配送', desc: '適合特定區域的當日或即時到府配送' },
-          { value: 'store', bg: '#616161', badge: '自取', label: '門市 / 指定地點自取', desc: '顧客至門市、倉庫或指定地點自行取貨' },
+          { value: 'home_delivery', bg: '#4A4A4A', badge: '宅配', label: '宅配到府', desc: '配送到指定地址' },
+          { value: 'cvs_normal', iconUrl: SHIPPING_ICONS.cvs, label: '超商取貨（一般）', desc: '顧客到超商門市取貨' },
+          { value: 'cvs_bulk', iconUrl: SHIPPING_ICONS.cvs, label: '超商取貨（大宗）', desc: '大量訂單批次交寄至超商物流中心，再配送到指定門市' },
+          { value: 'cvs_cod', iconUrl: SHIPPING_ICONS.cvs, label: '超商取貨付款', desc: '取貨時付款' },
+          { value: 'post', iconUrl: SHIPPING_ICONS.post, label: '郵寄', desc: '透過郵局寄送' },
+          { value: 'store', bg: '#616161', badge: '自取', label: '門市 / 指定地點自取', desc: '顧客自行到指定地點取貨' },
           { value: 'undecided', bg: 'var(--info)', badge: '?', label: '尚未確認', desc: '希望由顧問依商品、客群與出貨量協助建議' },
         ] },
       { id: 'shipping_methods_intl', type: 'logo-card-multi', label: '國際配送承運商？', customerOnly: true,
@@ -1482,15 +1505,43 @@ function submitRemote() {
     .then(r => r.json())
     .catch(err => { console.warn('submit fail', err); return { ok: false, error: String(err) }; });
 }
-function uploadAttachmentRemote(file, qid) {
+function uploadAttachmentRemote(file, qid, onProgress) {
   return new Promise((resolve, reject) => {
+    // Apps Script / Drive 實務上不適合讓單檔太大；先在前端擋掉，避免讀完整 base64 後才失敗。
+    const MAX_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
+    if (file.size > MAX_FILE_BYTES) {
+      reject(new Error(`「${file.name}」超過 15 MB，請壓縮後再上傳`));
+      return;
+    }
+
+    const report = (pct, status) => {
+      if (typeof onProgress === 'function') onProgress(Math.max(0, Math.min(100, pct)), status || '');
+    };
+
+    if (!state.token) {
+      state.token = generateToken();
+      try { sessionStorage.setItem('__interview_token', state.token); } catch (_) {}
+    }
+
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('讀取檔案失敗：' + file.name));
+    reader.onprogress = e => {
+      if (e.lengthComputable && e.total > 0) {
+        // 讀取本機檔案約佔整體 0–30%。
+        report(Math.round((e.loaded / e.total) * 30), '正在讀取檔案…');
+      }
+    };
     reader.onload = e => {
+      report(32, '準備上傳…');
       const dataUrl = String(e.target.result || '');
-      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      const comma = dataUrl.indexOf(',');
+      const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+      if (!base64) {
+        reject(new Error('檔案內容為空或無法讀取：' + file.name));
+        return;
+      }
+
       const payload = {
-        action: 'upload',
         token: state.token,
         question_id: qid,
         filename: file.name,
@@ -1498,35 +1549,86 @@ function uploadAttachmentRemote(file, qid) {
         base64,
       };
 
+      // google.script.run 沒有原生 upload progress callback，因此送往 Apps Script / Drive 的階段
+      // 以漸進方式顯示處理中，收到成功回應後再到 100%。
+      let uploadTicker = null;
+      let approx = 36;
+      const startUploadTicker = () => {
+        report(approx, '正在上傳到雲端…');
+        uploadTicker = setInterval(() => {
+          if (approx < 92) {
+            approx += approx < 70 ? 3 : 1;
+            report(approx, '正在上傳到雲端…');
+          }
+        }, 350);
+      };
+      const stopUploadTicker = () => {
+        if (uploadTicker) clearInterval(uploadTicker);
+        uploadTicker = null;
+      };
+
       if (USE_GAS) {
+        startUploadTicker();
         google.script.run
           .withSuccessHandler(r => {
+            stopUploadTicker();
             if (!r || !r.ok) return reject(new Error((r && r.error) || '上傳失敗'));
-            resolve({ name: file.name, size: file.size, type: file.type, url: r.url || '', file_id: r.file_id || '' });
+            report(100, '上傳完成');
+            resolve({
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              url: r.url || '',
+              file_id: r.file_id || '',
+              sharing_warning: r.sharing_warning || ''
+            });
           })
-          .withFailureHandler(err => reject(new Error(String(err))))
+          .withFailureHandler(err => {
+            stopUploadTicker();
+            const msg = err && err.message ? err.message : String(err || 'Apps Script 上傳失敗');
+            reject(new Error(msg));
+          })
           .uploadAttachment(payload);
         return;
       }
 
-      // 獨立 HTML / 本機預覽：若有 Web App URL 則嘗試 API；否則只保留本機預覽。
+      // 獨立 HTML / 本機預覽：透過已部署 Web App API 上傳。
       if (APPS_SCRIPT_URL) {
+        startUploadTicker();
         fetch(APPS_SCRIPT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ action: 'upload', ...payload }),
         })
-          .then(r => r.json())
-          .then(r => {
-            if (!r || !r.ok) throw new Error((r && r.error) || '上傳失敗');
-            resolve({ name: file.name, size: file.size, type: file.type, url: r.url || '', file_id: r.file_id || '' });
+          .then(async r => {
+            const text = await r.text();
+            let data;
+            try { data = JSON.parse(text); }
+            catch (_) { throw new Error('上傳 API 回傳格式異常：' + text.slice(0, 120)); }
+            if (!data || !data.ok) throw new Error((data && data.error) || '上傳失敗');
+            return data;
           })
-          .catch(reject);
+          .then(r => {
+            stopUploadTicker();
+            report(100, '上傳完成');
+            resolve({
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              url: r.url || '',
+              file_id: r.file_id || '',
+              sharing_warning: r.sharing_warning || ''
+            });
+          })
+          .catch(err => { stopUploadTicker(); reject(err); });
         return;
       }
 
+      // 純本機預覽才保留 dataUrl；正式 Apps Script 版不把 base64 塞進 state / Sheet。
+      report(100, '讀取完成');
       resolve({ name: file.name, size: file.size, type: file.type, dataUrl, local_only: true });
     };
+    report(1, '準備讀取檔案…');
     reader.readAsDataURL(file);
   });
 }
@@ -1981,7 +2083,7 @@ function renderInput(q, currentAns) {
               return `
                 <button class="option-card ${(v || []).includes(o.value) ? 'selected' : ''}" style="min-height:112px; padding:14px; gap:6px;" onclick="toggleMulti('${q.id}', '${o.value}')">
                   <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; width:100%; padding-right:20px;">
-                    <div class="option-title" style="line-height:1.45;">${o.label}</div>
+                    <div class="option-title" style="line-height:1.45;">${o.badge && o.badge.includes('推薦') ? '🔥 ' : ''}${o.label}</div>
                     ${o.badge ? `<span style="display:inline-block; flex-shrink:0; padding:2px 8px; ${badgeStyle} font-size:10px; font-weight:650; border-radius:var(--r-full); white-space:nowrap;">${o.badge}</span>` : ''}
                   </div>
                   ${o.desc ? `<div class="option-desc" style="line-height:1.55;">${o.desc}</div>` : ''}
@@ -2183,7 +2285,7 @@ function renderInput(q, currentAns) {
                         <div style="font-size:12px; color:var(--text-3);">${Math.round(f.size / 1024)} KB</div>
                       </div>
                     </div>
-                    <button class="del-btn" onclick="event.stopPropagation(); removeFileAt('${q.id}', ${i})">✕</button>
+                    <button type="button" class="del-btn" onclick="event.stopPropagation(); removeFileAt('${q.id}', ${i})">✕</button>
                   </div>
                 `).join('')}
                 <div style="text-align:center; padding:12px; color:var(--text-2); font-size:13px; border:1px dashed var(--border); border-radius:var(--r-2);">
@@ -2195,7 +2297,7 @@ function renderInput(q, currentAns) {
               <div>點擊上傳或拖曳檔案到此（可多檔）</div>
               <div style="font-size:12px; color:var(--text-3); margin-top:4px;">支援 PNG / JPG / PDF / SVG</div>
             `}
-            <input type="file" id="fileIn_${q.id}" multiple style="display:none;" onchange="handleFileList(event.target.files, '${q.id}')">
+            <input type="file" id="fileIn_${q.id}" multiple accept="image/png,image/jpeg,image/webp,image/svg+xml,application/pdf,.ai,.psd,.doc,.docx,.ppt,.pptx,.xls,.xlsx" style="display:none;" onchange="handleFileList(event.target.files, '${q.id}')">
           </div>
         ` : ''}
         ${q.type === 'file-or-none' && q.options ? `
@@ -2718,19 +2820,79 @@ async function handleFileList(fileList, qid) {
   const arr = Array.from(fileList);
 
   const input = document.getElementById('fileIn_' + qid);
+  const drop = input ? input.closest('.file-drop') : null;
   if (input) input.disabled = true;
+  if (drop) {
+    drop.style.pointerEvents = 'none';
+    drop.style.opacity = '.8';
+  }
+
+  // 上傳開始才建立進度 UI；完成後 renderQuestion() 會自動移除。
+  let progressBox = null;
+  if (drop) {
+    progressBox = document.createElement('div');
+    progressBox.className = 'file-upload-progress';
+    progressBox.innerHTML = `
+      <div class="file-upload-progress-head">
+        <span class="file-upload-progress-name">準備上傳…</span>
+        <span class="file-upload-progress-pct">0%</span>
+      </div>
+      <div class="file-upload-progress-track"><div class="file-upload-progress-fill"></div></div>
+      <div class="file-upload-progress-status">請勿關閉頁面</div>
+    `;
+    drop.appendChild(progressBox);
+  }
+
+  const updateProgress = (fileIndex, file, filePct, status) => {
+    if (!progressBox) return;
+    const totalPct = Math.round(((fileIndex + (filePct / 100)) / arr.length) * 100);
+    const nameEl = progressBox.querySelector('.file-upload-progress-name');
+    const pctEl = progressBox.querySelector('.file-upload-progress-pct');
+    const fillEl = progressBox.querySelector('.file-upload-progress-fill');
+    const statusEl = progressBox.querySelector('.file-upload-progress-status');
+    if (nameEl) nameEl.textContent = `正在處理 ${fileIndex + 1} / ${arr.length}：${file.name}`;
+    if (pctEl) pctEl.textContent = totalPct + '%';
+    if (fillEl) fillEl.style.width = totalPct + '%';
+    if (statusEl) statusEl.textContent = status || '請勿關閉頁面';
+  };
 
   try {
     const uploaded = [];
-    for (const file of arr) {
-      uploaded.push(await uploadAttachmentRemote(file, qid));
+    for (let i = 0; i < arr.length; i++) {
+      const file = arr[i];
+      if (drop) drop.setAttribute('data-uploading', `正在上傳 ${i + 1}/${arr.length}：${file.name}`);
+      updateProgress(i, file, 0, '準備上傳…');
+      uploaded.push(await uploadAttachmentRemote(file, qid, (pct, status) => updateProgress(i, file, pct, status)));
+    }
+    if (progressBox) {
+      const fillEl = progressBox.querySelector('.file-upload-progress-fill');
+      const pctEl = progressBox.querySelector('.file-upload-progress-pct');
+      const statusEl = progressBox.querySelector('.file-upload-progress-status');
+      if (fillEl) fillEl.style.width = '100%';
+      if (pctEl) pctEl.textContent = '100%';
+      if (statusEl) statusEl.textContent = '上傳完成';
     }
     setAnswer(qid, { ...cur, mode: 'has', files: [...files, ...uploaded] });
+    saveState();
+    // 稍微保留完成狀態，讓使用者看得到 100%。
+    await new Promise(r => setTimeout(r, 350));
     renderQuestion();
   } catch (err) {
     console.warn('attachment upload failed', err);
+    if (progressBox) {
+      const statusEl = progressBox.querySelector('.file-upload-progress-status');
+      if (statusEl) statusEl.textContent = '上傳失敗';
+    }
     alert('檔案上傳失敗：' + (err && err.message ? err.message : err));
-    if (input) input.disabled = false;
+    if (input) {
+      input.disabled = false;
+      input.value = '';
+    }
+    if (drop) {
+      drop.style.pointerEvents = '';
+      drop.style.opacity = '';
+      drop.removeAttribute('data-uploading');
+    }
   }
 }
 
@@ -3493,7 +3655,7 @@ function _priceDisplayLabel(v) { return ({ add_tax_on_display:'商品設定價 +
 function _loginMethodLabel(v) { return ({ email_otp:'Email OTP 驗證登入', google:'Google 一鍵登入', facebook:'Facebook 一鍵登入', shop:'Shop 一鍵登入' })[v] || v; }
 function _paymentMethodLabel(v) { return ({ credit_once:'信用卡一次付清', credit_installment:'信用卡分期付款', atm:'ATM / 虛擬帳號', cod:'貨到付款', line_pay:'LINE Pay', jkopay:'街口支付', apple_pay:'Apple Pay', google_pay:'Google Pay', paypal:'PayPal', stripe:'Stripe', shopify_payments:'Shopify Payments' })[v] || v; }
 function _providerLabel(v) { return ({ undecided:'尚未決定', shopify_payments:'Shopify Payments', greenworld:'綠界 ECPay', tappay:'TapPay', paynow:'PayNow', hitrust:'HiTrust', stripe:'Stripe', paypal:'PayPal', other:'其他' })[v] || v; }
-function _shipTwLabel(v) { return ({ home_delivery:'宅配到府', cvs_normal:'超商取貨（一般）', cvs_bulk:'超商取貨（大宗）', cvs_cod:'超商取貨付款', post:'郵寄', same_day:'當日 / 即時配送', store:'門市／指定地點自取', undecided:'尚未確認' })[v] || v; }
+function _shipTwLabel(v) { return ({ home_delivery:'宅配到府', cvs_normal:'超商取貨（一般）', cvs_bulk:'超商取貨（大宗）', cvs_cod:'超商取貨付款', post:'郵寄', store:'門市／指定地點自取', undecided:'尚未確認' })[v] || v; }
 function _shipIntlLabel(v) { return ({ none:'無國際配送需求', fedex:'FedEx', dhl:'DHL Express', ups:'UPS', usps:'USPS', sf_intl:'順豐速運（國際）', ems:'EMS / 郵政國際包裹', '3pl':'由海外倉庫或 3PL 提供', undecided:'尚未確認' })[v] || v; }
 function _feeStrategyLabel(v) { return ({ flat:'統一單價', by_method:'依配送方式收', by_region:'依配送區域收', by_weight:'依重量或體積', free_over:'滿額免運', free_all:'全站免運', realtime:'物流商即時運費' })[v] || v; }
 function _fapiaoLabel(v) { return ({ no:'不需要', need_no_provider:'需要，尚未有合作供應商', need_has_provider:'需要，已有合作供應商' })[v] || v; }
