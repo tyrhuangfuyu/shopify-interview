@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -342,6 +343,54 @@
   .option-card.compact.has-logo { min-height: 72px; padding: 10px 12px; }
   .option-card.compact.has-logo.selected { padding: 9px 11px; }
 
+
+  /* Social links: fixed, non-overflowing layout */
+  #qInput { min-width: 0; max-width: 100%; }
+  .social-fields {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    width: 100%;
+    max-width: 100%;
+  }
+  .social-row {
+    display: grid;
+    grid-template-columns: 130px minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+  }
+  .social-platform {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 550;
+    white-space: nowrap;
+  }
+  .social-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    flex: 0 0 20px;
+  }
+  .social-row input { width: 100%; min-width: 0; }
+  .social-custom-row {
+    display: grid;
+    grid-template-columns: 130px minmax(0, 1fr) 36px;
+    gap: 12px;
+    align-items: center;
+    min-width: 0;
+  }
+  .social-add-btn { justify-self: start; width: auto; }
+  @media (max-width: 600px) {
+    .social-row { grid-template-columns: 1fr; gap: 6px; }
+    .social-custom-row { grid-template-columns: 1fr 36px; gap: 8px; }
+    .social-custom-row input:first-child { grid-column: 1 / -1; }
+  }
+
   .advice-cta {
     display: block;
     width: 100%;
@@ -432,6 +481,7 @@
   @media (max-width: 480px) {
     .floating-nav .fn-btn { padding: 8px 12px; font-size: 12px; }
     .floating-nav .fn-progress { display: none; }
+    .options-grid[style*="repeat(2"] { grid-template-columns: 1fr !important; }
   }
   .app { padding-bottom: 100px !important; } /* 留空間給浮動列 */
 
@@ -787,6 +837,17 @@ function computeSupportedPayments(selectedProviders) {
   return set;
 }
 
+// 針對單一付款方式，回傳有支援的金流商清單
+function providersForMethod(method) {
+  const list = [];
+  Object.keys(PAYMENT_SUPPORT).forEach(pid => {
+    if (pid === 'undecided' || pid === 'other') return;
+    const s = PAYMENT_SUPPORT[pid];
+    if (s && s.indexOf(method) >= 0) list.push(pid);
+  });
+  return list;
+}
+
 // ============ 國家 → 時區映射 ============
 const COUNTRY_TO_TIMEZONE = {
   'taiwan': '(GMT+8) 台北', '台灣': '(GMT+8) 台北', 'tw': '(GMT+8) 台北',
@@ -1118,11 +1179,11 @@ const SCHEMA = [
           { value: 'shop', icon: '🛍️', title: 'Shop（Shopify）', desc: 'Shopify 官方 Shop App 登入' },
         ] },
       { id: 'price_display', type: 'visual-preview', label: '網站商品價格要怎麼顯示？',
-        helper: '直接看效果，選你想要的樣子',
+        helper: '假設商品設定金額 200，稅率 5%，前台顯示效果如下（三選一）',
         options: [
-          { value: 'inc_tax', mock: { big: 'NT$ 1,200', small: '已含稅' }, title: '含稅價', desc: 'B2C 最常見' },
-          { value: 'exc_tax', mock: { big: 'NT$ 1,143', small: '未稅，結帳加 5%' }, title: '未稅價', desc: 'B2B 常見' },
-          { value: 'both', mock: { big: 'NT$ 1,200', small: '含稅 NT$ 57' }, title: '兩者都顯示', desc: '歐洲常見' },
+          { value: 'add_tax_on_display', mock: { big: '$210', small: '含稅' }, title: '前台自動加稅顯示', desc: '商品設定 200，前台自動加 5% 顯示 $210' },
+          { value: 'inc_tax', mock: { big: '$200', small: '含稅' }, title: '設定價格已含稅', desc: '商品設定 200，前台顯示 $200（稅已內含）' },
+          { value: 'exc_tax_show_at_checkout', mock: { big: '$200 + 稅 $10', small: '結帳頁另外顯示' }, title: '結帳頁再顯示稅', desc: '商品設定 200，前台顯示 $200，結帳頁另加 $10 稅' },
         ] },
     ]
   },
@@ -1130,12 +1191,13 @@ const SCHEMA = [
     id: 3,
     title: '金流、物流與系統',
     questions: [
-      { id: 'payment_provider', type: 'checkbox', label: '已經有合作的金流廠商嗎？', customerOnly: true,
-        helper: '可複選。金流商決定網站能收哪些付款方式，先確認這題我們才好評估。',
-        info: '💡 如果<b>還沒決定</b>，選「尚未決定」就好，下一題勾完想要的付款方式後我們會依此建議適合的金流商。',
+      { id: 'payment_provider', type: 'checkbox', label: '預計串接的金流服務商', customerOnly: true,
+        helper: '若已經有合作、申請中或預計使用的金流服務商，可直接勾選；若尚未確定，可先選「尚未決定，會議討論」。',
         warning: 'Shopify Payments 目前不支援設立在台灣的公司申請，僅設立在日本 / 新加坡 / 香港 / 美國等地區的公司可申請。',
+        default: ['undecided'],
+        otherInput: { answerId: 'payment_provider_other', label: '其他金流服務商名稱', placeholder: '請填寫服務商名稱' },
         options: [
-          { value: 'undecided', label: '尚未決定' },
+          { value: 'undecided', label: '<b>尚未決定，會議討論</b>', badge: '預設', badgeStyle: 'info' },
           { value: 'shopify_payments', label: 'Shopify Payments', badge: '限境外公司', badgeStyle: 'warning' },
           { value: 'greenworld', label: '綠界 ECPay', badge: '歐斯瑞合作夥伴', badgeStyle: 'partner' },
           { value: 'tappay', label: 'TapPay', badge: '歐斯瑞合作夥伴', badgeStyle: 'partner' },
@@ -1146,11 +1208,9 @@ const SCHEMA = [
           { value: 'other', label: '其他' },
         ] },
       { id: 'payment_methods', type: 'logo-card-multi', label: '網站要提供哪些付款方式？', customerOnly: true,
-        helper: '可複選。',
-        info: '💡 若上一題已選金流商，我們會確認支援情況；若上一題選「尚未決定」，我們會依你這裡的選擇建議適合的金流商。',
-        warning: '設立在台灣的公司無法申請 Shopify Payments。',
+        helper: '可複選。若某付款方式僅特定金流服務商支援，勾選後會直接顯示適用的服務商；一般皆可支援的付款方式則不另外提示。',
         allowCustom: true,
-        customPlaceholder: '其他付款方式（例：後付款 / 分期 App）',
+        customPlaceholder: '其他付款方式（例：後付款 / 其他電子支付）',
         options: [
           { value: 'credit_once', iconUrl: PAYMENT_ICONS.credit, label: '信用卡一次付清' },
           { value: 'credit_installment', iconUrl: PAYMENT_ICONS.credit, label: '信用卡分期付款' },
@@ -1161,34 +1221,31 @@ const SCHEMA = [
           { value: 'apple_pay', iconUrl: PAYMENT_ICONS.applepay, label: 'Apple Pay' },
           { value: 'google_pay', iconUrl: PAYMENT_ICONS.gpay, label: 'Google Pay' },
           { value: 'paypal', iconUrl: PAYMENT_ICONS.paypal, label: 'PayPal' },
-          { value: 'stripe', iconUrl: PAYMENT_ICONS.stripe, label: 'Stripe' },
-          { value: 'shopify_payments', bg: '#95BF47', badge: 'SP', label: 'Shopify Payments（限境外公司）' },
           { value: 'undecided', bg: 'var(--info)', badge: '?', label: '尚未確認，需要顧問建議' },
         ] },
-      { id: 'logistics_partner', type: 'yes-no-branch', label: '已有合作物流商嗎？', customerOnly: true,
+      { id: 'logistics_partner', type: 'yes-no-branch', label: '是否已有合作或預計串接的物流服務商？', customerOnly: true,
+        helper: '例如黑貓宅急便、新竹物流、宅配通、超商物流整合商或其他 3PL。若目前沒有合作服務商，選「沒有」後會接著確認期望的配送方式。',
+        showIf: ans => ans.business_region && ans.business_region.value === 'tw',
         options: [
-          { value: 'undecided', icon: '🤔', title: '尚未決定', desc: '希望你們推薦' },
-          { value: 'yes', icon: '✅', title: '有', desc: '請填物流商名稱' },
+          { value: 'yes', icon: '🚚', title: '有', desc: '已有合作、申請中或預計串接的物流服務商' },
+          { value: 'no', icon: '📝', title: '沒有', desc: '目前尚未指定物流商，先確認期望配送方式' },
         ],
         branchIf: 'yes',
-        branchInput: { placeholder: '例：黑貓、新竹物流、順豐…' } },
-      { id: 'shipping_methods_tw', type: 'logo-card-multi', label: '台灣境內配送方式？', customerOnly: true,
-        helper: '可複選；實際串接方式與物流供應商將於 Kickoff Meeting 中確認',
+        branchInput: { type: 'text', placeholder: '請填寫物流服務商名稱，可填多家，例如：黑貓宅急便、新竹物流' } },
+      { id: 'shipping_methods_tw', type: 'logo-card-multi', label: '期望提供哪些台灣境內配送方式？', customerOnly: true,
+        helper: '這題只確認消費者在結帳時希望看到的配送方式，不需要先決定由哪一家物流商承運。',
         showIf: ans => ans.business_region && ans.business_region.value === 'tw',
         allowCustom: true,
         customPlaceholder: '其他配送方式',
         options: [
-          { value: 'cvs_normal', iconUrl: SHIPPING_ICONS.cvs, label: '超商取貨店到店（7-11 / 全家等）' },
-          { value: 'cvs_bulk', iconUrl: SHIPPING_ICONS.cvs, label: '超商取貨店到店（大宗）' },
-          { value: 'cvs_cod', iconUrl: SHIPPING_ICONS.cvs, label: '超商貨到付款' },
-          { value: 'post', iconUrl: SHIPPING_ICONS.post, label: '國內郵局宅配' },
-          { value: 'tcat', iconUrl: SHIPPING_ICONS.tcat, label: '黑貓宅急便' },
-          { value: 'hct', bg: '#005BAA', badge: '新竹', label: '新竹物流' },
-          { value: 'lalamove', bg: '#EF7C00', badge: 'Lala', label: 'Lalamove' },
-          { value: 'ta_q_bin', bg: '#E60027', badge: '大榮', label: '大榮貨運' },
-          { value: 'sf', bg: '#000000', badge: 'SF', label: '順豐速運' },
-          { value: 'store', bg: '#4A4A4A', badge: '自取', label: '門市 / 指定地點自取' },
-          { value: 'undecided', bg: 'var(--info)', badge: '?', label: '尚未確認' },
+          { value: 'home_delivery', bg: '#4A4A4A', badge: '宅配', label: '宅配到府', desc: '配送至顧客指定地址' },
+          { value: 'cvs_normal', iconUrl: SHIPPING_ICONS.cvs, label: '超商取貨（一般）', desc: '顧客於 7-ELEVEN、全家等超商門市取貨' },
+          { value: 'cvs_bulk', iconUrl: SHIPPING_ICONS.cvs, label: '超商取貨（大宗）', desc: '「大宗」指商家有較大量、批次出貨需求，通常會以批次方式建立與交寄超商物流單；實際適用門檻依物流服務商方案而定。' },
+          { value: 'cvs_cod', iconUrl: SHIPPING_ICONS.cvs, label: '超商取貨付款', desc: '顧客到超商取貨時再付款' },
+          { value: 'post', iconUrl: SHIPPING_ICONS.post, label: '郵寄', desc: '透過郵局國內包裹或其他郵寄服務配送' },
+          { value: 'same_day', bg: '#EF7C00', badge: '即時', label: '當日 / 即時配送', desc: '適合特定區域的當日或即時到府配送' },
+          { value: 'store', bg: '#616161', badge: '自取', label: '門市 / 指定地點自取', desc: '顧客至門市、倉庫或指定地點自行取貨' },
+          { value: 'undecided', bg: 'var(--info)', badge: '?', label: '尚未確認', desc: '希望由顧問依商品、客群與出貨量協助建議' },
         ] },
       { id: 'shipping_methods_intl', type: 'logo-card-multi', label: '國際配送承運商？', customerOnly: true,
         helper: '可複選；若無跨境需求可選「無國際配送需求」',
@@ -1243,6 +1300,7 @@ const SCHEMA = [
         branchInput: { placeholder: '例：通用電子發票、多奇…' } },
       { id: 'external_systems', type: 'checkbox', label: 'Shopify 需要跟其他系統連接嗎？', customerOnly: true,
         helper: 'API 細節不用現在提供，Kickoff 後再由 IT 討論',
+        default: ['none'],
         options: [
           { value: 'none', label: '無' },
           { value: 'unsure', label: '尚未決定' },
@@ -1260,40 +1318,50 @@ const SCHEMA = [
     id: 4, title: '其他（選填）',
     questions: [
       { id: 'features', type: 'checkbox-groups', label: '這個網站想要哪些進階功能？（可複選）',
-        helper: '這裡只列<b>需要另外裝 App 的功能</b>（Shopify 內建的優惠券、禮物卡、部落格、基本 SEO 等不需要選）。<br>勾選的項目可能在本次合約範疇內，也可能屬於第二階段擴充，Kickoff 時 PM 會依合約幫你分類。',
+        helper: '可先勾選目前有興趣或預期會需要的功能。勾選項目可能在本次合約範疇內，也可能列為第二階段擴充，Kickoff 時 PM 會再依實際需求確認。',
         groups: [
-          { title: '會員經營', options: [
-            { value: 'member_tier', label: '會員分級（VIP / 銀卡 / 金卡）', badge: '需 App' },
-            { value: 'points', label: '點數回饋 / 集點', badge: '需 App' },
-            { value: 'birthday', label: '生日禮 / 專屬優惠', badge: '需 App' },
-            { value: 'wishlist', label: 'Wishlist 收藏', badge: '需 App' },
-            { value: 'referral', label: '推薦好友獎勵', badge: '需 App' },
+          { title: 'Customer｜顧客／會員', options: [
+            { value: 'member_tier', label: '會員分級（VIP / 銀卡 / 金卡）', desc: '依消費金額、訂單數、點數或其他條件自動升降會員等級，並提供不同會員權益。', badge: '需 App' },
+            { value: 'points', label: '點數回饋 / 集點', desc: '消費、註冊、生日或活動等行為獲得點數，可用於折抵或兌換優惠。', badge: '需 App' },
+            { value: 'birthday', label: '生日禮 / 會員專屬優惠', desc: '依生日、會員等級或顧客標籤提供專屬折扣、購物金或其他優惠。', badge: '需 App' },
+            { value: 'wishlist', label: 'Wishlist 收藏', desc: '顧客可收藏喜歡的商品，登入後保存個人收藏清單。', badge: '需 App' },
+            { value: 'referral', label: '推薦好友獎勵 Referral', desc: '會員分享推薦連結或推薦碼，好友完成指定條件後提供雙方獎勵。', badge: '需 App' },
+            { value: 'segment_tags', label: '顧客分眾 / 標籤自動化', desc: '依消費金額、購買商品、會員等級或行為，自動標記與分群顧客。', badge: '通常需 App' },
+            { value: 'wholesale_pricing', label: '批發價 / 分眾價格', desc: '依顧客、會員等級、公司或標籤顯示不同價格、折扣或商品目錄。', badge: '通常需 App' },
+            { value: 'content_lock', label: '頁面上鎖 / 會員內容限制', desc: '限制特定會員、顧客標籤或已登入顧客才能瀏覽指定頁面、商品或內容。', badge: '需 App' },
+            { value: 'warranty_registration', label: '保固註冊 / 保固索賠', desc: '讓顧客登錄商品、序號與購買資料建立保固紀錄，並可提交維修、換貨或保固索賠申請。', badge: '需 App' },
           ] },
-          { title: '銷售促購', options: [
-            { value: 'review', label: '商品評論 / 評分', badge: '需 App' },
-            { value: 'bundle', label: '組合商品 / 加購', badge: '需 App' },
-            { value: 'upsell', label: '結帳加購 / 追加銷售 Upsell', badge: '需 App' },
-            { value: 'popup', label: '彈跳視窗 / 導客訂閱', badge: '需 App' },
-            { value: 'affiliate', label: 'Affiliate 分潤（合作行銷）', badge: '需 App' },
+          { title: 'Catalog｜商品／目錄', options: [
+            { value: 'bundle', label: '商品組合 / Bundle', desc: '將多個商品組成套組販售，可設定組合價、固定內容或讓顧客自行搭配。', badge: '通常需 App' },
+            { value: 'product_addon', label: '商品加購 / 附加服務', desc: '在商品頁提供相關配件、加價購商品或附加服務。', badge: '通常需 App' },
+            { value: 'booking', label: '預約系統', desc: '提供諮詢、課程、美容、活動、場地等日期與時段預約，並管理名額。若前面商品類型勾選「服務預約／票券」，此項會預設勾選。', badge: '需 App' },
           ] },
-          { title: '客服與溝通', options: [
-            { value: 'live_chat', label: '線上客服 Live Chat', badge: '需 App' },
-            { value: 'chatbot', label: 'AI 聊天機器人', badge: '需 App' },
-            { value: 'line_integration', label: 'LINE 官方帳號 整合客服', badge: '需 App' },
-            { value: 'faq', label: '進階 FAQ 常見問題頁', badge: '需 App' },
-            { value: 'help_desk', label: '客服工單系統（Gorgias/Zendesk）', badge: '需 App' },
+          { title: 'Sales｜銷售／轉換', options: [
+            { value: 'review', label: '商品評論 / 評分', desc: '顧客購買後可留下文字、照片、影片與星級評價，提升商品信任與轉換率。', badge: '推薦・需 App' },
+            { value: 'upsell', label: '結帳加購 / 追加銷售 Upsell', desc: '在購物車、結帳或付款完成頁推薦相關商品、升級方案或優惠，提高客單價。', badge: '可能需 App' },
+            { value: 'affiliate', label: 'Affiliate / KOL 分潤', desc: '建立合作夥伴專屬連結或折扣碼，追蹤訂單並計算佣金。', badge: '需 App' },
+            { value: 'popup', label: '彈跳視窗 / 導客訂閱', desc: '透過 Popup、優惠碼或表單蒐集 Email / SMS，累積會員與行銷名單。', badge: '通常需 App' },
           ] },
-          { title: '行銷自動化', options: [
-            { value: 'email_marketing', label: 'Email 行銷（Klaviyo / Omnisend）', badge: '需 App' },
-            { value: 'sms_marketing', label: 'SMS 行銷推播', badge: '需 App' },
-            { value: 'abandon_cart', label: '棄單挽回自動 Email', badge: '需 App' },
-            { value: 'segment_push', label: '分眾推播 / 標籤自動化', badge: '需 App' },
+          { title: 'Market｜行銷／分析', options: [
+            { value: 'ai_marketing_agent', label: 'AI 營運與行銷分析 Agent', desc: '歐斯瑞開發。協助中小企業分析 Shopify 流量、轉換、銷售、商品與顧客數據，主動發現營運問題與成長機會，提供異常提醒、改善建議與策略規劃。', badge: '歐斯瑞開發APP・推薦' },
+            { value: 'email_marketing', label: 'Email 行銷（Klaviyo / Omnisend）', desc: '進行 EDM、會員分眾、購物車挽回、再行銷與自動化流程。', badge: '需 App' },
+            { value: 'marketing_automation', label: '行銷自動化 / 分眾推播', desc: '依會員、訂單、瀏覽或購買行為，自動觸發 Email、SMS 或其他行銷訊息。', badge: '通常需 App' },
+            { value: 'heatmap', label: '使用者行為分析', desc: '透過 Heatmap、Session Recording、點擊與滑動紀錄，分析網站操作與轉換問題。', badge: '需 App' },
+            { value: 'scheduled_reports', label: '定期營運報告', desc: '自動匯出 Shopify 訂單、商品、顧客及銷售資料，依週／月等週期產生並寄送營運報告。', badge: '需 App' },
+            { value: 'affiliate_analytics', label: 'KOL / Affiliate 成效分析', desc: '追蹤不同合作夥伴的流量、訂單、營收、轉換率與佣金成效。', badge: '通常與 Affiliate App 搭配' },
           ] },
-          { title: '內容 / SEO / 分析', options: [
-            { value: 'page_builder', label: '進階頁面編輯器（PageFly / Shogun）', badge: '需 App' },
-            { value: 'seo_tools', label: '進階 SEO 優化工具', badge: '需 App' },
-            { value: 'heatmap', label: '使用者行為熱區分析（Hotjar 等）', badge: '需 App' },
-            { value: 'multi_lang_translate', label: '多語系翻譯管理（Weglot / Langify）', badge: '需 App' },
+          { title: 'Content｜內容／網站體驗', options: [
+            { value: 'page_builder', label: '進階頁面編輯器（PageFly / Shogun）', desc: '建立超出 Theme 原生 Section 能力的進階 Landing Page、活動頁或特殊版型。', badge: '需 App' },
+            { value: 'seo_tools', label: '進階 SEO 優化工具', desc: '提供 Schema、圖片 ALT、Broken Link、SEO Audit、Redirect 等進階 SEO 管理。', badge: '進階需求通常需 App' },
+            { value: 'multi_lang_translate', label: '多語系自動翻譯管理', desc: '使用 Weglot、Langify 等工具管理多語內容、翻譯流程與不同語言版本。', badge: '可能需 App' },
+            { value: 'geo_redirect', label: '依 IP / 國家自動切換或導向', desc: '依訪客 IP 或所在地，自動建議／切換語言、幣別、市場，或導向指定網站。', badge: '進階需求通常需 App' },
+            { value: 'instagram_feed', label: 'Instagram 社群內容嵌入', desc: '將 Instagram 貼文、Reels 或社群內容動態顯示於官網。', badge: '通常需 App' },
+          ] },
+          { title: 'Other｜客服／營運工具', options: [
+            { value: 'live_chat', label: 'Live Chat 線上客服', desc: '讓客服人員直接與網站訪客進行即時聊天與諮詢。', badge: '需 App' },
+            { value: 'chatbot', label: 'AI 聊天機器人', desc: '透過 AI 回答商品、訂單、FAQ、品牌資訊等常見問題，降低客服人工負擔。', badge: '需 App' },
+            { value: 'help_desk', label: '客服工單系統（Gorgias / Zendesk）', desc: '整合 Email、Live Chat、社群與訂單資料，集中管理客服案件與處理紀錄。', badge: '需 App' },
+            { value: 'warranty_management', label: '保固案件管理', desc: '供客服與售後團隊查看保固註冊、維修、換貨及索賠案件，追蹤處理進度與顧客溝通。', badge: '需 App' },
           ] },
         ] },
       { id: 'future_plans', type: 'textarea', label: '其他想討論的補充事項？（選填）', customerOnly: true,
@@ -1414,6 +1482,55 @@ function submitRemote() {
     .then(r => r.json())
     .catch(err => { console.warn('submit fail', err); return { ok: false, error: String(err) }; });
 }
+function uploadAttachmentRemote(file, qid) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('讀取檔案失敗：' + file.name));
+    reader.onload = e => {
+      const dataUrl = String(e.target.result || '');
+      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      const payload = {
+        action: 'upload',
+        token: state.token,
+        question_id: qid,
+        filename: file.name,
+        mime: file.type || 'application/octet-stream',
+        base64,
+      };
+
+      if (USE_GAS) {
+        google.script.run
+          .withSuccessHandler(r => {
+            if (!r || !r.ok) return reject(new Error((r && r.error) || '上傳失敗'));
+            resolve({ name: file.name, size: file.size, type: file.type, url: r.url || '', file_id: r.file_id || '' });
+          })
+          .withFailureHandler(err => reject(new Error(String(err))))
+          .uploadAttachment(payload);
+        return;
+      }
+
+      // 獨立 HTML / 本機預覽：若有 Web App URL 則嘗試 API；否則只保留本機預覽。
+      if (APPS_SCRIPT_URL) {
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload),
+        })
+          .then(r => r.json())
+          .then(r => {
+            if (!r || !r.ok) throw new Error((r && r.error) || '上傳失敗');
+            resolve({ name: file.name, size: file.size, type: file.type, url: r.url || '', file_id: r.file_id || '' });
+          })
+          .catch(reject);
+        return;
+      }
+
+      resolve({ name: file.name, size: file.size, type: file.type, dataUrl, local_only: true });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function generateToken() {
   return Math.random().toString(36).slice(2, 8).toUpperCase() +
          Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -1571,7 +1688,7 @@ function renderQuestion() {
   let q = currentQuestion();
   // icon-card / range / visual-preview 有 default 且未答過 → 預先帶入答案（讓「已選」狀態一進題就顯示）
   if (q && q.default !== undefined && !state.answers[q.id] &&
-      (q.type === 'icon-card' || q.type === 'range' || q.type === 'visual-preview' || q.type === 'radio' || q.type === 'checkbox-cards')) {
+      (q.type === 'icon-card' || q.type === 'range' || q.type === 'visual-preview' || q.type === 'radio' || q.type === 'checkbox-cards' || q.type === 'checkbox')) {
     state.answers[q.id] = { value: q.default, is_advice_needed: false, updated_at: new Date().toISOString(), _seeded: true };
   }
   // searchable-select 有 suggestFrom 或 default → 也預先 seed，讓已預選狀態視為「已答」
@@ -1600,9 +1717,13 @@ function renderQuestion() {
   const currentAns = getAnswer(q.id) || {};
   const isAdvice = !!currentAns.is_advice_needed;
 
+  const enc = encourage(progress().pct);
   main().innerHTML = `
     <div class="card">
-      <span class="step-tag">${section.title} · ${posInSection} / ${totalInSection}</span>
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+        <span class="step-tag" style="margin:0;">${section.title} · ${posInSection} / ${totalInSection}</span>
+        <span style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; background:${enc.bg}; color:${enc.color};">${enc.text}</span>
+      </div>
       <h1 class="q-title">${q.label}${q.required ? '<span style="color:var(--danger); margin-left:6px;">*</span>' : ''}</h1>
       ${q.helper ? `<p class="helper">${q.helper}</p>` : ''}
       ${q.info ? `<div class="banner info"><span>${q.info}</span></div>` : ''}
@@ -1733,24 +1854,9 @@ function renderInput(q, currentAns) {
       const custom = q.allowCustom ? (val.custom || []) : [];
       const toggleFn = q.allowCustom ? 'toggleCustomMulti' : 'toggleMulti';
 
-      // 付款方式題：依據 payment_provider 標示支援狀況
-      let supportSet = null;
-      let providerLabelsList = '';
-      if (q.id === 'payment_methods') {
-        const providerAns = state.answers.payment_provider;
-        const providers = providerAns && Array.isArray(providerAns.value) ? providerAns.value : [];
-        supportSet = computeSupportedPayments(providers);
-        if (supportSet && providers.length) {
-          providerLabelsList = providers.map(p => PROVIDER_LABELS[p] || p).join('、');
-        }
-      }
+      const isPaymentMethodsQ = q.id === 'payment_methods';
 
       return `
-        ${supportSet && providerLabelsList ? `
-          <div class="banner info" style="margin-bottom:12px;">
-            <span>依你選的金流商（<b>${providerLabelsList}</b>），下方 <span style="opacity:.5;">灰色淡化</span> 是不支援的付款方式，Shopify 無法開通。<br><small style="opacity:.85;">💡 選 PayPal / Stripe / Shopify Payments 會自動涵蓋信用卡收單（他們本質就是處理卡別付款）。</small></span>
-          </div>
-        ` : ''}
         <div class="options-grid cols-3">
           ${q.options.map(o => {
             const fallbackChar = (o.badge || o.icon || o.label[0]).slice(0, 2);
@@ -1759,13 +1865,24 @@ function renderInput(q, currentAns) {
                    <img src="${o.iconUrl}" alt="${o.label}" style="width:100%; height:100%; object-fit:contain;" onerror="logoFallback(this, '${fallbackChar.replace(/'/g, "\\'")}')">
                  </div>`
               : `<div class="option-icon logo-badge" style="background:${o.bg};">${o.icon || o.badge}</div>`;
-            const unsupported = supportSet && !supportSet.has(o.value) && o.value !== 'undecided';
-            const unsupportedStyle = unsupported ? 'opacity:.35; filter:grayscale(1);' : '';
-            const title = unsupported ? `title="你選的金流商不支援此付款方式"` : '';
+            // 付款方式題：只有在使用者勾選後，且支援服務商較有限時才顯示提示。
+            // 一般信用卡一次付清等普遍支援項目不顯示，避免畫面資訊過多。
+            let providerHint = '';
+            if (isPaymentMethodsQ && selected.includes(o.value) && !['undecided', 'credit_once', 'cod'].includes(o.value)) {
+              const providers = providersForMethod(o.value);
+              if (providers.length > 0 && providers.length <= 3) {
+                const names = providers.map(p => PROVIDER_LABELS[p] || p).join(' / ');
+                providerHint = `<div style="font-size:11px; color:var(--info); background:var(--info-bg); padding:4px 8px; border-radius:var(--r-2); margin-top:6px; line-height:1.45;">適用金流服務商：<b>${names}</b></div>`;
+              }
+            }
             return `
-              <button class="option-card compact has-logo ${selected.includes(o.value) ? 'selected' : ''}" style="${unsupportedStyle}" onclick="${toggleFn}('${q.id}', '${o.value}')" ${title}>
+              <button class="option-card compact has-logo ${selected.includes(o.value) ? 'selected' : ''}" onclick="${toggleFn}('${q.id}', '${o.value}')">
                 ${iconHtml}
-                <div class="option-title">${o.label}</div>
+                <div style="flex:1; min-width:0;">
+                  <div class="option-title">${o.label}</div>
+                  ${o.desc ? `<div class="option-desc">${o.desc}</div>` : ''}
+                  ${providerHint}
+                </div>
               </button>
             `;
           }).join('')}
@@ -1800,7 +1917,9 @@ function renderInput(q, currentAns) {
           `).join('')}
         </div>
       `;
-    case 'checkbox':
+    case 'checkbox': {
+      const selected = v || [];
+      const otherValue = q.otherInput && state.answers[q.otherInput.answerId] ? state.answers[q.otherInput.answerId].value : '';
       return `
         <div class="options-grid cols-1">
           ${q.options.map(o => {
@@ -1813,13 +1932,20 @@ function renderInput(q, currentAns) {
               badgeHtml = `<span style="display:inline-block; margin-left:8px; padding:2px 10px; ${bs} font-size:11px; font-weight:650; border-radius:var(--r-full); vertical-align:middle; white-space:nowrap;">${o.badge}</span>`;
             }
             return `
-              <button class="option-card compact ${(v || []).includes(o.value) ? 'selected' : ''}" onclick="toggleMulti('${q.id}', '${o.value}')">
+              <button class="option-card compact ${selected.includes(o.value) ? 'selected' : ''}" onclick="toggleMulti('${q.id}', '${o.value}')">
                 <div class="option-title">${o.label}${badgeHtml}</div>
               </button>
             `;
           }).join('')}
         </div>
+        ${q.otherInput && selected.includes('other') ? `
+          <div class="field" style="margin-top:12px;">
+            <label class="field-label">${q.otherInput.label || '其他'}</label>
+            <input type="text" value="${escapeHtml(otherValue || '')}" placeholder="${q.otherInput.placeholder || ''}" oninput="setAuxAnswer('${q.otherInput.answerId}', this.value)">
+          </div>
+        ` : ''}
       `;
+    }
     case 'checkbox-with-custom': {
       const val = v && typeof v === 'object' && !Array.isArray(v) ? v : { selected: Array.isArray(v) ? v : [], custom: [] };
       const selected = val.selected || [];
@@ -1845,19 +1971,20 @@ function renderInput(q, currentAns) {
     }
     case 'checkbox-groups':
       return q.groups.map(g => `
-        <div class="field">
-          <div class="field-label">${g.title}</div>
-          <div class="options-grid cols-3">
+        <div class="field" style="margin-bottom:28px;">
+          <div class="field-label" style="font-size:15px; font-weight:700; padding-bottom:8px; border-bottom:1px solid var(--border); margin-bottom:12px;">${g.title}</div>
+          <div class="options-grid" style="grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px;">
             ${g.options.map(o => {
-              const badgeStyle = o.badge === '內建'
-                ? 'background:#e1e1e1; color:var(--text-2);'
-                : 'background:var(--warning-bg); color:var(--warning);';
+              let badgeStyle = 'background:var(--warning-bg); color:var(--warning);';
+              if (o.badge && (o.badge.includes('推薦') || o.badge.includes('歐斯瑞'))) badgeStyle = 'background:var(--success-bg); color:var(--success);';
+              else if (o.badge && (o.badge.includes('可能') || o.badge.includes('通常') || o.badge.includes('進階'))) badgeStyle = 'background:var(--info-bg); color:var(--info);';
               return `
-                <button class="option-card compact ${(v || []).includes(o.value) ? 'selected' : ''}" onclick="toggleMulti('${q.id}', '${o.value}')">
-                  <div class="option-title" style="flex:1;">
-                    ${o.label}
-                    ${o.badge ? `<span style="display:inline-block; margin-left:6px; padding:1px 8px; ${badgeStyle} font-size:10px; font-weight:650; border-radius:var(--r-full); vertical-align:middle; white-space:nowrap;">${o.badge}</span>` : ''}
+                <button class="option-card ${(v || []).includes(o.value) ? 'selected' : ''}" style="min-height:112px; padding:14px; gap:6px;" onclick="toggleMulti('${q.id}', '${o.value}')">
+                  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; width:100%; padding-right:20px;">
+                    <div class="option-title" style="line-height:1.45;">${o.label}</div>
+                    ${o.badge ? `<span style="display:inline-block; flex-shrink:0; padding:2px 8px; ${badgeStyle} font-size:10px; font-weight:650; border-radius:var(--r-full); white-space:nowrap;">${o.badge}</span>` : ''}
                   </div>
+                  ${o.desc ? `<div class="option-desc" style="line-height:1.55;">${o.desc}</div>` : ''}
                 </button>
               `;
             }).join('')}
@@ -1901,7 +2028,7 @@ function renderInput(q, currentAns) {
         </div>
         ${showUrl ? `
           <div class="field" style="margin-top:16px;">
-            <input type="url" data-qid="${q.id}" data-field="url" value="${escapeHtml(cur.url || '')}" placeholder="${q.branchInput.placeholder}">
+            <input type="${(q.branchInput && q.branchInput.type) || 'url'}" data-qid="${q.id}" data-field="url" value="${escapeHtml(cur.url || '')}" placeholder="${q.branchInput.placeholder}">
           </div>
         ` : ''}
       `;
@@ -2006,29 +2133,29 @@ function renderInput(q, currentAns) {
       const custom = val.custom || [];
       const noSocial = !!val.noSocial;
       return `
-        <button class="option-card compact ${noSocial ? 'selected' : ''}" style="margin-bottom:12px;" onclick="toggleNoSocial('${q.id}')">
+        <button type="button" class="option-card compact ${noSocial ? 'selected' : ''}" style="margin-bottom:16px; width:100%;" onclick="toggleNoSocial('${q.id}')">
           <div class="option-icon">🚫</div>
           <div class="option-title">尚未建立社群 / 目前不需要</div>
         </button>
         ${!noSocial ? `
-          <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="social-fields">
             ${platforms.map(p => `
-              <div style="display:flex; gap:8px; align-items:center;">
-                <div style="width:96px; display:flex; align-items:center; gap:6px; font-size:13px; font-weight:550; flex-shrink:0;">
-                  <span style="width:20px; height:20px; border-radius:4px; background:${p.color}; flex-shrink:0;"></span>
-                  ${p.name}
+              <div class="social-row">
+                <div class="social-platform">
+                  <span class="social-dot" style="background:${p.color};"></span>
+                  <span>${p.name}</span>
                 </div>
                 <input type="url" data-qid="${q.id}" data-platform="${p.key}" value="${escapeHtml(val[p.key] || '')}" placeholder="https://...">
               </div>
             `).join('')}
             ${custom.map((c, i) => `
-              <div style="display:flex; gap:8px; align-items:center;">
-                <input type="text" style="width:96px; flex-shrink:0;" data-qid="${q.id}" data-custom-field="name" data-idx="${i}" value="${escapeHtml(c.name || '')}" placeholder="平台名稱">
+              <div class="social-custom-row">
+                <input type="text" data-qid="${q.id}" data-custom-field="name" data-idx="${i}" value="${escapeHtml(c.name || '')}" placeholder="平台名稱">
                 <input type="url" data-qid="${q.id}" data-custom-field="url" data-idx="${i}" value="${escapeHtml(c.url || '')}" placeholder="https://...">
-                <button class="del-btn" onclick="removeSocialCustom('${q.id}', ${i})">✕</button>
+                <button type="button" class="del-btn" onclick="removeSocialCustom('${q.id}', ${i})" aria-label="刪除社群平台">✕</button>
               </div>
             `).join('')}
-            <button class="add-btn" onclick="addSocialCustom('${q.id}')">＋ 新增其他社群平台</button>
+            <button type="button" class="add-btn social-add-btn" onclick="addSocialCustom('${q.id}')">＋ 新增其他社群平台</button>
           </div>
         ` : ''}
       `;
@@ -2210,8 +2337,9 @@ function renderInput(q, currentAns) {
 // ============ 輸入處理 ============
 function attachInputHandlers(q) {
   document.querySelectorAll(`[data-qid="${q.id}"]`).forEach(el => {
-    el.addEventListener('input', () => onFieldInput(q, el));
-    el.addEventListener('blur', () => saveState());
+    // 若 el 本身是容器（div），事件會從子 input 冒泡上來 → 用 event.target 取實際 input
+    el.addEventListener('input', (evt) => onFieldInput(q, evt.target && evt.target.dataset ? evt.target : el));
+    el.addEventListener('blur', () => saveState(), true); // capture 讓子元素 blur 也觸發
   });
 }
 function onFieldInput(q, el) {
@@ -2296,8 +2424,14 @@ function setAnswer(qid, value) {
   state.answers[qid] = { value, is_advice_needed: false, updated_at: new Date().toISOString() };
   // 副作用：選了任一金流商 → 預設把「信用卡一次付清」勾上（可自行取消）
   if (qid === 'payment_provider') maybeSeedCreditCard();
+  // 商品類型選擇「服務預約／票券」→ 進階功能預設勾選「預約系統」（仍可自行取消）
+  if (qid === 'product_types') maybeSeedBooking();
   saveState();
   updateFloatingNav(); // 即時更新底部按鈕文字（暫時略過 → 下一題）跟進度百分比
+}
+function setAuxAnswer(qid, value) {
+  state.answers[qid] = { value, is_advice_needed: false, updated_at: new Date().toISOString() };
+  saveState();
 }
 
 function updateFloatingNav() {
@@ -2347,6 +2481,21 @@ function maybeSeedCreditCard() {
     state.answers.payment_methods = { value: pm, is_advice_needed: false, updated_at: new Date().toISOString() };
   }
   state._creditSeeded = true;
+}
+
+function maybeSeedBooking() {
+  const productAns = state.answers.product_types;
+  const productTypes = productAns && Array.isArray(productAns.value) ? productAns.value : [];
+  if (!productTypes.includes('service')) {
+    state._bookingSeeded = false;
+    return;
+  }
+  if (state._bookingSeeded) return;
+  const featureAns = state.answers.features;
+  const features = featureAns && Array.isArray(featureAns.value) ? [...featureAns.value] : [];
+  if (!features.includes('booking')) features.push('booking');
+  state.answers.features = { value: features, is_advice_needed: false, updated_at: new Date().toISOString(), _seeded: true };
+  state._bookingSeeded = true;
 }
 function pickSingle(qid, value, evt) {
   const cur = state.answers[qid] && state.answers[qid].value;
@@ -2405,7 +2554,20 @@ function cancelAutoAdvance() {
 }
 function toggleMulti(qid, value) {
   const cur = (state.answers[qid] && state.answers[qid].value) || [];
-  const next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value];
+  let next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value];
+  const exclusiveByQuestion = {
+    payment_provider: ['undecided'],
+    payment_methods: ['undecided'],
+    shipping_methods_tw: ['undecided'],
+    shipping_methods_intl: ['none', 'undecided'],
+    external_systems: ['none', 'unsure'],
+  };
+  const exclusive = exclusiveByQuestion[qid] || [];
+  if (exclusive.includes(value) && next.includes(value)) {
+    next = [value];
+  } else if (!exclusive.includes(value)) {
+    next = next.filter(v => !exclusive.includes(v));
+  }
   setAnswer(qid, next);
   renderQuestion();
 }
@@ -2472,6 +2634,7 @@ function removeUrlMode(qid, idx) {
 function tagKey(evt, qid) {
   if (evt.key === 'Enter' || evt.key === ',') {
     evt.preventDefault();
+    evt.stopPropagation();
     const val = evt.target.value.trim().replace(/,$/, '').trim();
     if (!val) return;
     const tags = Array.isArray(state.answers[qid] && state.answers[qid].value)
@@ -2511,25 +2674,29 @@ function pickFileMode(qid, mode) {
   // 選擇不需要上傳檔案的選項 → 3 秒後自動下一題
   if (mode !== 'has') startAutoAdvance(3);
 }
-function handleFileList(fileList, qid) {
+async function handleFileList(fileList, qid) {
   if (!fileList || !fileList.length) return;
   const cur = (state.answers[qid] && state.answers[qid].value) || { mode: 'has', files: [] };
   const files = cur.files ? [...cur.files] : (cur.file ? [cur.file] : []);
-  let done = 0;
   const arr = Array.from(fileList);
-  arr.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      files.push({ name: file.name, size: file.size, type: file.type, dataUrl: e.target.result });
-      done++;
-      if (done === arr.length) {
-        setAnswer(qid, { mode: 'has', files });
-        renderQuestion();
-      }
-    };
-    reader.readAsDataURL(file);
-  });
+
+  const input = document.getElementById('fileIn_' + qid);
+  if (input) input.disabled = true;
+
+  try {
+    const uploaded = [];
+    for (const file of arr) {
+      uploaded.push(await uploadAttachmentRemote(file, qid));
+    }
+    setAnswer(qid, { ...cur, mode: 'has', files: [...files, ...uploaded] });
+    renderQuestion();
+  } catch (err) {
+    console.warn('attachment upload failed', err);
+    alert('檔案上傳失敗：' + (err && err.message ? err.message : err));
+    if (input) input.disabled = false;
+  }
 }
+
 function removeFileAt(qid, idx) {
   const cur = (state.answers[qid] && state.answers[qid].value) || { mode: 'has', files: [] };
   const files = cur.files ? [...cur.files] : (cur.file ? [cur.file] : []);
@@ -2582,6 +2749,14 @@ function toggleCustomMulti(qid, value) {
   const cur = raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : { selected: Array.isArray(raw) ? [...raw] : [], custom: [] };
   cur.selected = cur.selected || [];
   cur.selected = cur.selected.includes(value) ? cur.selected.filter(x => x !== value) : [...cur.selected, value];
+  const exclusiveByQuestion = {
+    payment_methods: ['undecided'],
+    shipping_methods_tw: ['undecided'],
+    shipping_methods_intl: ['none', 'undecided'],
+  };
+  const exclusive = exclusiveByQuestion[qid] || [];
+  if (exclusive.includes(value) && cur.selected.includes(value)) cur.selected = [value];
+  else if (!exclusive.includes(value)) cur.selected = cur.selected.filter(v => !exclusive.includes(v));
   setAnswer(qid, cur);
   renderQuestion();
 }
@@ -2655,6 +2830,7 @@ function unsetAdvice(qid) {
 
 // ============ 導航 ============
 function next() {
+  cancelAutoAdvance();
   const q = currentQuestion();
   // 必填檢查（顧客專屬 = 顧客自己知道；非顧客專屬可用「尚未決定」帶過）
   if (q && q.required && !isAnswered(q.id)) {
@@ -3224,6 +3400,9 @@ function generateNotionMarkdown() {
   gArr('payment_methods').forEach(p => md.push(`    - ${_paymentMethodLabel(p)}`));
   md.push(`- 合作金流商`);
   gArr('payment_provider').forEach(p => md.push(`    - ${_providerLabel(p)}`));
+  if (gArr('payment_provider').includes('other') && g('payment_provider_other') !== 'TBC') {
+    md.push(`    - 其他服務商：${g('payment_provider_other')}`);
+  }
   md.push(`- 台灣境內配送方式`);
   gArr('shipping_methods_tw').forEach(s => md.push(`    - ${_shipTwLabel(s)}`));
   md.push(`- 國際配送承運商`);
@@ -3273,16 +3452,16 @@ function _customerTypeLabel(v) { return ({ b2c:'B2C 一般消費者', b2b:'B2B �
 function _operatingModelLabel(v) { return ({ brand_only:'形象網站（無購物）', shopify_online:'Shopify 線上商店', shopify_pos:'線上商店 + Shopify POS' })[v] || v; }
 function _productTypeLabel(v) { return ({ physical:'實體商品', digital:'數位商品', preorder:'預購商品', subscription:'訂閱制', service:'服務預約／票券' })[v] || v; }
 function _productQtyLabel(v) { return ({ '1-20':'1-20', '21-100':'21-100', '101-500':'101-500', '500+':'500+', 'unknown':'還不確定' })[v] || v; }
-function _priceDisplayLabel(v) { return ({ inc_tax:'商品價格已含稅', exc_tax:'商品價格不包含稅金，稅金另行計算', both:'含稅、未稅同時顯示' })[v] || v; }
+function _priceDisplayLabel(v) { return ({ add_tax_on_display:'商品設定價 + 稅金（前台自動加稅顯示，例 200 → 210）', inc_tax:'設定價格已含稅（前台顯示 200，稅內含）', exc_tax_show_at_checkout:'前台顯示未稅價 200，結帳頁另加稅', exc_tax:'商品價格不包含稅金，稅金另行計算', both:'含稅、未稅同時顯示' })[v] || v; }
 function _loginMethodLabel(v) { return ({ email_otp:'Email OTP 驗證登入', google:'Google 一鍵登入', facebook:'Facebook 一鍵登入', shop:'Shop 一鍵登入' })[v] || v; }
 function _paymentMethodLabel(v) { return ({ credit_once:'信用卡一次付清', credit_installment:'信用卡分期付款', atm:'ATM / 虛擬帳號', cod:'貨到付款', line_pay:'LINE Pay', jkopay:'街口支付', apple_pay:'Apple Pay', google_pay:'Google Pay', paypal:'PayPal', stripe:'Stripe', shopify_payments:'Shopify Payments' })[v] || v; }
 function _providerLabel(v) { return ({ undecided:'尚未決定', shopify_payments:'Shopify Payments', greenworld:'綠界 ECPay', tappay:'TapPay', paynow:'PayNow', hitrust:'HiTrust', stripe:'Stripe', paypal:'PayPal', other:'其他' })[v] || v; }
-function _shipTwLabel(v) { return ({ cvs_normal:'超商取貨店到店（7-11 / 全家等）', cvs_bulk:'超商取貨（大宗）', cvs_cod:'超商貨到付款', post:'國內郵局宅配', tcat:'黑貓宅急便', hct:'新竹物流', lalamove:'Lalamove', ta_q_bin:'大榮貨運', sf:'順豐速運', store:'門市／指定地點自取', undecided:'尚未確認' })[v] || v; }
+function _shipTwLabel(v) { return ({ home_delivery:'宅配到府', cvs_normal:'超商取貨（一般）', cvs_bulk:'超商取貨（大宗）', cvs_cod:'超商取貨付款', post:'郵寄', same_day:'當日 / 即時配送', store:'門市／指定地點自取', undecided:'尚未確認' })[v] || v; }
 function _shipIntlLabel(v) { return ({ none:'無國際配送需求', fedex:'FedEx', dhl:'DHL Express', ups:'UPS', usps:'USPS', sf_intl:'順豐速運（國際）', ems:'EMS / 郵政國際包裹', '3pl':'由海外倉庫或 3PL 提供', undecided:'尚未確認' })[v] || v; }
 function _feeStrategyLabel(v) { return ({ flat:'統一單價', by_method:'依配送方式收', by_region:'依配送區域收', by_weight:'依重量或體積', free_over:'滿額免運', free_all:'全站免運', realtime:'物流商即時運費' })[v] || v; }
 function _fapiaoLabel(v) { return ({ no:'不需要', need_no_provider:'需要，尚未有合作供應商', need_has_provider:'需要，已有合作供應商' })[v] || v; }
 function _systemLabel(v) { return ({ none:'無', unsure:'尚未決定', erp:'ERP', crm:'CRM', pos:'POS', wms:'WMS 倉儲', member:'會員系統', '3pl':'第三方物流', other:'其他' })[v] || v; }
-function _featureLabel(v) { return ({ member_tier:'會員分級', points:'點數回饋 / 集點', birthday:'生日禮 / 專屬優惠', wishlist:'Wishlist 收藏', referral:'推薦好友獎勵', review:'商品評論 / 評分', bundle:'組合商品 / 加購', upsell:'結帳加購 / Upsell', popup:'彈跳視窗 / 導客訂閱', affiliate:'Affiliate 分潤', live_chat:'線上客服 Live Chat', chatbot:'AI 聊天機器人', line_integration:'LINE 官方帳號 整合客服', faq:'進階 FAQ', help_desk:'客服工單系統', email_marketing:'Email 行銷', sms_marketing:'SMS 行銷', abandon_cart:'棄單挽回', segment_push:'分眾推播', page_builder:'進階頁面編輯器', seo_tools:'進階 SEO 工具', heatmap:'熱區分析', multi_lang_translate:'多語系翻譯管理' })[v] || v; }
+function _featureLabel(v) { return ({ member_tier:'會員分級', points:'點數回饋 / 集點', birthday:'生日禮 / 會員專屬優惠', wishlist:'Wishlist 收藏', referral:'推薦好友獎勵 Referral', segment_tags:'顧客分眾 / 標籤自動化', wholesale_pricing:'批發價 / 分眾價格', content_lock:'頁面上鎖 / 會員內容限制', warranty_registration:'保固註冊 / 保固索賠', bundle:'商品組合 / Bundle', product_addon:'商品加購 / 附加服務', booking:'預約系統', review:'商品評論 / 評分', upsell:'結帳加購 / Upsell', affiliate:'Affiliate / KOL 分潤', popup:'彈跳視窗 / 導客訂閱', ai_marketing_agent:'AI 營運與行銷分析 Agent', email_marketing:'Email 行銷', marketing_automation:'行銷自動化 / 分眾推播', heatmap:'使用者行為分析', scheduled_reports:'定期營運報告', affiliate_analytics:'KOL / Affiliate 成效分析', page_builder:'進階頁面編輯器', seo_tools:'進階 SEO 優化工具', multi_lang_translate:'多語系自動翻譯管理', geo_redirect:'依 IP / 國家自動切換或導向', instagram_feed:'Instagram 社群內容嵌入', live_chat:'Live Chat 線上客服', chatbot:'AI 聊天機器人', help_desk:'客服工單系統', warranty_management:'保固案件管理' })[v] || v; }
 function _branchLabel(v) { return ({ yes:'有', no:'沒有', undecided:'尚未決定', shopify:'使用 Shopify 內建', custom:'有指定', planned:'有想好，尚未購買', owned:'有想好，已購買', none:'無', ecpay:'綠界 ECPay', jingyao:'鯨躍', ezpay:'ezPay（藍新）', other:'其他', 'zh-TW':'繁體中文', en:'English', ja:'日本語', 'zh-CN':'简体中文', ko:'한국어' })[v] || v; }
 function _multiValue(ans) {
   if (!ans || !ans.value) return '無';
@@ -3451,6 +3630,37 @@ function toggleScope() {
 }
 loadState();
 render();
+
+// 全域鍵盤：Enter 快速進下一題。
+// 重要：選項卡點選後焦點會留在 button；再次按 Enter 不應觸發「再點一次取消」，而是進下一題。
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing) return;
+  if (state.currentView !== 'question') return;
+
+  const el = document.activeElement;
+  if (el) {
+    // 多行文字保留 Enter 換行
+    if (el.tagName === 'TEXTAREA') return;
+    // 可搜尋下拉與 tag 輸入有自己的 Enter 行為
+    if (el.closest && el.closest('.searchable-select')) return;
+    if (el.dataset && el.dataset.field === 'new-tag') return;
+
+    // 已選取的答案卡：Enter = 下一題，不再把答案取消掉
+    if (el.tagName === 'BUTTON') {
+      const isAnswerCard = el.classList.contains('option-card') || el.classList.contains('visual-card');
+      if (isAnswerCard && el.classList.contains('selected')) {
+        e.preventDefault();
+        e.stopPropagation();
+        next();
+      }
+      // 其他 button 保留原生 Enter（例如新增、刪除、導覽）
+      return;
+    }
+  }
+
+  e.preventDefault();
+  next();
+});
 
 // 如果設定了 Apps Script URL 且有 token → 背景載入遠端最新版（可能同事在另一台裝置更新過）
 (async () => {
