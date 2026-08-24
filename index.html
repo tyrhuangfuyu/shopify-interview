@@ -485,6 +485,7 @@
   }
   .file-drop:hover { border-color: var(--primary); background: var(--bg-surface-hover); }
   .file-drop.has-file { border-style: solid; text-align: left; padding: 16px; }
+  .file-drop.drag-over { border-color: var(--primary); background: var(--info-bg); border-style: solid; }
   .file-preview { display: flex; align-items: center; gap: 12px; }
   .file-preview img { max-height: 64px; border-radius: var(--r-1); }
 
@@ -901,8 +902,8 @@ const SCHEMA = [
           { value: 'eu', icon: '🇪🇺', title: '歐洲', desc: '英國 / 德國 / 法國…' },
           { value: 'other', icon: '🌐', title: '其他', desc: 'Kickoff 一起討論' },
         ] },
-      { id: 'existing_site', type: 'yes-no-branch', label: '目前已經有網站在營運嗎？', customerOnly: true,
-        helper: '不管是否要用 Shopify 重做，只要現在還看得到的網站都算',
+      { id: 'existing_site', type: 'yes-no-branch', label: '現行公司有對外公開的網站嗎？', customerOnly: true,
+        helper: '購物網站或是形象網站都算 —— 例如品牌官網、Landing Page、代理商網站等',
         options: [
           { value: 'yes', icon: '🌐', title: '有', desc: '請提供網址' },
           { value: 'no', icon: '✨', title: '沒有', desc: '這次是全新品牌' },
@@ -2034,24 +2035,42 @@ function renderInput(q, currentAns) {
     }
     case 'file':
     case 'file-or-none': {
-      const cur = v || { mode: 'none', file: null };
+      const cur = v || { mode: q.type === 'file-or-none' ? 'none' : 'has', files: [] };
+      const files = cur.files || (cur.file ? [cur.file] : []); // 兼容舊資料
+      const showDrop = q.type === 'file' || cur.mode === 'has';
       return `
-        <div class="file-drop ${cur.file ? 'has-file' : ''}" onclick="document.getElementById('fileIn_${q.id}').click()">
-          ${cur.file ? `
-            <div class="file-preview">
-              ${cur.file.dataUrl ? `<img src="${cur.file.dataUrl}" alt="">` : '📎'}
-              <div>
-                <div style="font-weight:550;">${escapeHtml(cur.file.name)}</div>
-                <div style="font-size:12px; color:var(--text-3);">${Math.round(cur.file.size / 1024)} KB</div>
+        ${showDrop ? `
+          <div class="file-drop ${files.length ? 'has-file' : ''}"
+               ondragover="event.preventDefault(); this.classList.add('drag-over');"
+               ondragleave="this.classList.remove('drag-over');"
+               ondrop="event.preventDefault(); this.classList.remove('drag-over'); handleFileList(event.dataTransfer.files, '${q.id}');"
+               onclick="if(event.target.tagName!=='BUTTON') document.getElementById('fileIn_${q.id}').click()">
+            ${files.length ? `
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                ${files.map((f, i) => `
+                  <div class="file-preview" style="justify-content:space-between; padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--r-2);">
+                    <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
+                      ${f.dataUrl && f.type && f.type.startsWith('image/') ? `<img src="${f.dataUrl}" alt="" style="max-height:48px; max-width:48px; border-radius:4px;">` : '<span style="font-size:24px;">📎</span>'}
+                      <div style="flex:1; min-width:0;">
+                        <div style="font-weight:550; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(f.name)}</div>
+                        <div style="font-size:12px; color:var(--text-3);">${Math.round(f.size / 1024)} KB</div>
+                      </div>
+                    </div>
+                    <button class="del-btn" onclick="event.stopPropagation(); removeFileAt('${q.id}', ${i})">✕</button>
+                  </div>
+                `).join('')}
+                <div style="text-align:center; padding:12px; color:var(--text-2); font-size:13px; border:1px dashed var(--border); border-radius:var(--r-2);">
+                  ＋ 點擊或拖曳更多檔案到此
+                </div>
               </div>
-            </div>
-          ` : `
-            <div style="font-size:32px; margin-bottom:8px;">📁</div>
-            <div>點擊上傳或拖曳檔案到此</div>
-            <div style="font-size:12px; color:var(--text-3); margin-top:4px;">支援 PNG / JPG / PDF / SVG</div>
-          `}
-          <input type="file" id="fileIn_${q.id}" style="display:none;" onchange="handleFile(event, '${q.id}')">
-        </div>
+            ` : `
+              <div style="font-size:32px; margin-bottom:8px;">📁</div>
+              <div>點擊上傳或拖曳檔案到此（可多檔）</div>
+              <div style="font-size:12px; color:var(--text-3); margin-top:4px;">支援 PNG / JPG / PDF / SVG</div>
+            `}
+            <input type="file" id="fileIn_${q.id}" multiple style="display:none;" onchange="handleFileList(event.target.files, '${q.id}')">
+          </div>
+        ` : ''}
         ${q.type === 'file-or-none' && q.options ? `
           <div class="options-grid cols-1" style="margin-top:12px;">
             ${q.options.map(o => `
@@ -2492,16 +2511,34 @@ function pickFileMode(qid, mode) {
   // 選擇不需要上傳檔案的選項 → 3 秒後自動下一題
   if (mode !== 'has') startAutoAdvance(3);
 }
-function handleFile(evt, qid) {
-  const file = evt.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    setAnswer(qid, { mode: 'has', file: { name: file.name, size: file.size, type: file.type, dataUrl: e.target.result } });
-    renderQuestion();
-  };
-  reader.readAsDataURL(file);
+function handleFileList(fileList, qid) {
+  if (!fileList || !fileList.length) return;
+  const cur = (state.answers[qid] && state.answers[qid].value) || { mode: 'has', files: [] };
+  const files = cur.files ? [...cur.files] : (cur.file ? [cur.file] : []);
+  let done = 0;
+  const arr = Array.from(fileList);
+  arr.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      files.push({ name: file.name, size: file.size, type: file.type, dataUrl: e.target.result });
+      done++;
+      if (done === arr.length) {
+        setAnswer(qid, { mode: 'has', files });
+        renderQuestion();
+      }
+    };
+    reader.readAsDataURL(file);
+  });
 }
+function removeFileAt(qid, idx) {
+  const cur = (state.answers[qid] && state.answers[qid].value) || { mode: 'has', files: [] };
+  const files = cur.files ? [...cur.files] : (cur.file ? [cur.file] : []);
+  files.splice(idx, 1);
+  setAnswer(qid, { ...cur, files });
+  renderQuestion();
+}
+// 舊版兼容
+function handleFile(evt, qid) { handleFileList(evt.target.files, qid); }
 let _colorRerenderTimer = null;
 function updateColor(qid, field, value) {
   const cur = (state.answers[qid] && state.answers[qid].value) || { main: '', secondary: '' };
@@ -3257,13 +3294,18 @@ function _multiValue(ans) {
 function _fileValue(ans) {
   if (!ans || !ans.value) return 'TBC';
   const v = ans.value;
-  if (v.file && v.file.name) return `已上傳：${v.file.name}`;
+  const files = v.files || (v.file ? [v.file] : []);
+  if (files.length) return '已上傳：' + files.map(f => f.name).join('、');
   return 'TBC';
 }
 function _ciValue(ans) {
   if (!ans || !ans.value) return 'TBC';
   const v = ans.value;
-  if (v.mode === 'has' && v.file) return `已上傳：${v.file.name}`;
+  if (v.mode === 'has') {
+    const files = v.files || (v.file ? [v.file] : []);
+    if (files.length) return '已上傳：' + files.map(f => f.name).join('、');
+    return '待上傳';
+  }
   if (v.mode === 'wip') return '整理中，後續提供';
   if (v.mode === 'none') return '無 CI 手冊';
   return 'TBC';
