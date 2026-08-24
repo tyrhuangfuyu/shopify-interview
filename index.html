@@ -917,6 +917,17 @@ const SCHEMA = [
           { value: 'coexist', icon: '➕', title: '兩邊並存', desc: '舊網站保留，Shopify 是新通路' },
           { value: 'undecided', icon: '🤔', title: '還沒想好', desc: 'Kickoff 一起討論' },
         ] },
+      { id: 'domain_name', type: 'yes-no-branch', label: '網域名稱（Domain）？', customerOnly: true,
+        helper: '網站對外的正式網址，例如 yourbrand.com',
+        showIf: ans => ans.existing_site && ans.existing_site.value && ans.existing_site.value.choice === 'no',
+        options: [
+          { value: 'none', icon: '❓', title: '還沒有', desc: '尚未想好網域名稱' },
+          { value: 'planned', icon: '💡', title: '有想好，但尚未購買', desc: '請填期望的網域' },
+          { value: 'owned', icon: '✅', title: '有想好，已購買', desc: '請填已有的網域' },
+        ],
+        branchIf: 'planned',
+        alsoBranchIf: 'owned',
+        branchInput: { placeholder: '例：yourbrand.com' } },
       { id: 'brand_intro', type: 'textarea', label: '商店簡介 · Meta 描述', customerOnly: true,
         helper: '這段文字會用在網站首頁介紹、Google 搜尋結果摘要（Meta description）、社群分享預覽等地方。建議 80–150 字，涵蓋你賣什麼、給誰、有什麼特色，會影響 SEO 曝光。',
         placeholder: '例：好棒棒選物精選台灣手作保養品，專為 25–40 歲女性設計，主打天然溫和、無添加香精，讓每日肌膚保養變得簡單愉悅。' },
@@ -925,8 +936,7 @@ const SCHEMA = [
         placeholder: 'https://momobox.com.tw/',
         modes: [
           { value: 'has', icon: '🌐', title: '有喜歡的網站', desc: '請貼網址（可多個）' },
-          { value: 'advice', icon: '💬', title: '尚未決定', desc: '希望顧問建議適合的風格' },
-          { value: 'none', icon: '✨', title: '目前沒想法', desc: 'Kickoff 一起討論' },
+          { value: 'none', icon: '💬', title: '沒有特別想法', desc: '希望顧問建議或 Kickoff 一起討論' },
         ] },
       { id: 'logo', type: 'file', label: '上傳品牌 Logo', customerOnly: true,
         helper: '之後可以再補；上傳後 Favicon 我們會從這裡自動生成' },
@@ -1490,14 +1500,7 @@ function render() {
 
 function updateTopbar() {
   const right = $('topbarRight');
-  if (state.currentView === 'welcome' || state.currentView === 'complete') {
-    right.innerHTML = '';
-  } else {
-    const vis = visibleQuestions();
-    const remaining = vis.length - vis.filter(q => isAnswered(q.id)).length;
-    const mins = Math.max(1, Math.ceil(remaining * 0.4));
-    right.innerHTML = `<span class="pill">⏱ 大約還剩 ${mins} 分鐘</span>`;
-  }
+  if (right) right.innerHTML = '';
 }
 
 function updateProgress() {
@@ -2065,19 +2068,21 @@ function renderInput(q, currentAns) {
       const stripes = 'repeating-linear-gradient(45deg, #eee, #eee 6px, #fff 6px, #fff 12px)';
       return `
         <div class="color-row">
-          <div class="color-swatch" style="background:${cur.main || stripes};" onclick="document.getElementById('mainColorPicker').click()" title="點擊選色"></div>
+          <label class="color-swatch" style="background:${cur.main || stripes};" title="點擊選色">
+            <input type="color" value="${cur.main || '#ffffff'}" style="opacity:0; width:1px; height:1px; border:none; padding:0;" oninput="updateColor('${q.id}', 'main', this.value)">
+          </label>
           <div class="color-inputs">
             <label>主色</label>
             <input type="text" data-qid="${q.id}" data-field="main" value="${escapeHtml(cur.main)}" placeholder="尚未指定，點左邊色塊選色或輸入 #色碼">
-            <input type="color" id="mainColorPicker" value="${cur.main || '#ffffff'}" style="position:absolute; opacity:0; pointer-events:none; width:0; height:0;" oninput="updateColor('${q.id}', 'main', this.value)">
           </div>
         </div>
         <div class="color-row">
-          <div class="color-swatch" style="background:${cur.secondary || stripes};" onclick="document.getElementById('subColorPicker').click()" title="點擊選色"></div>
+          <label class="color-swatch" style="background:${cur.secondary || stripes};" title="點擊選色">
+            <input type="color" value="${cur.secondary || '#ffffff'}" style="opacity:0; width:1px; height:1px; border:none; padding:0;" oninput="updateColor('${q.id}', 'secondary', this.value)">
+          </label>
           <div class="color-inputs">
             <label>副色</label>
             <input type="text" data-qid="${q.id}" data-field="secondary" value="${escapeHtml(cur.secondary)}" placeholder="尚未指定，點左邊色塊選色或輸入 #色碼">
-            <input type="color" id="subColorPicker" value="${cur.secondary || '#ffffff'}" style="position:absolute; opacity:0; pointer-events:none; width:0; height:0;" oninput="updateColor('${q.id}', 'secondary', this.value)">
           </div>
         </div>
       `;
@@ -2273,6 +2278,30 @@ function setAnswer(qid, value) {
   // 副作用：選了任一金流商 → 預設把「信用卡一次付清」勾上（可自行取消）
   if (qid === 'payment_provider') maybeSeedCreditCard();
   saveState();
+  updateFloatingNav(); // 即時更新底部按鈕文字（暫時略過 → 下一題）跟進度百分比
+}
+
+function updateFloatingNav() {
+  const q = currentQuestion();
+  if (!q) return;
+  const bar = document.querySelector('.floating-nav');
+  if (!bar) return;
+  // 更新進度百分比
+  const pctEl = bar.querySelector('.fn-progress');
+  if (pctEl) pctEl.textContent = progress().pct + '%';
+  // 更新主按鈕
+  const btn = bar.querySelector('.fn-btn.fn-primary, .fn-btn.fn-skip');
+  if (btn) {
+    const answered = isAnswered(q.id);
+    const isReq = q.required;
+    if (answered || isReq) {
+      btn.className = 'fn-btn fn-primary';
+      btn.textContent = '下一題 →';
+    } else {
+      btn.className = 'fn-btn fn-skip';
+      btn.textContent = '暫時略過 →';
+    }
+  }
 }
 
 function maybeSeedCreditCard() {
@@ -2473,11 +2502,25 @@ function handleFile(evt, qid) {
   };
   reader.readAsDataURL(file);
 }
+let _colorRerenderTimer = null;
 function updateColor(qid, field, value) {
-  const cur = (state.answers[qid] && state.answers[qid].value) || { main: '#303030', secondary: '#616161' };
+  const cur = (state.answers[qid] && state.answers[qid].value) || { main: '', secondary: '' };
   cur[field] = value;
-  setAnswer(qid, cur);
-  renderQuestion();
+  // 立即更新畫面色塊，不 re-render 整個題目（避免打斷 color picker）
+  state.answers[qid] = { value: cur, is_advice_needed: false, updated_at: new Date().toISOString() };
+  const swatches = document.querySelectorAll('.color-swatch');
+  const inputs = document.querySelectorAll(`[data-qid="${qid}"][data-field]`);
+  swatches.forEach((s, idx) => {
+    const val = idx === 0 ? cur.main : cur.secondary;
+    if (val) s.style.background = val;
+  });
+  inputs.forEach(inp => {
+    const f = inp.dataset.field;
+    if (f === 'main' || f === 'secondary') inp.value = cur[f] || '';
+  });
+  // debounce 存檔
+  clearTimeout(_colorRerenderTimer);
+  _colorRerenderTimer = setTimeout(saveState, 300);
 }
 function pickAddressMode(qid, mode) {
   const cur = (state.answers[qid] && state.answers[qid].value) || { mode: 'later', addresses: [{}] };
@@ -2829,7 +2872,6 @@ function renderComplete() {
         </div>
         <p style="font-size:13px; color:var(--text-3);">之後想到還可以回來修改</p>
         <div style="margin-top:24px; display:flex; gap:8px; justify-content:center;">
-          <button class="btn btn-secondary" onclick="downloadJSON()">📄 下載我的填寫內容</button>
           <button class="btn btn-primary" onclick="goDashboard()">回 Dashboard 檢視</button>
         </div>
       </div>
@@ -2896,6 +2938,364 @@ function downloadJSON() {
   a.download = `shopify-interview-${state.token}.json`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadNotion() {
+  try {
+    const md = generateNotionMarkdown();
+    if (!md || !md.trim()) {
+      alert('目前還沒有內容可以下載，請先填寫一些題目再試。');
+      return;
+    }
+    const brandName = (state.answers.brand_name && state.answers.brand_name.value) || 'shopify-interview';
+    const safeBrand = String(brandName).replace(/[\/\\:*?"<>|]/g, '_');
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = safeBrand + '-需求訪談.md';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  } catch (err) {
+    console.error('下載 Notion 格式失敗', err);
+    alert('下載失敗：' + err.message + '\n（請開瀏覽器 DevTools > Console 看詳細錯誤）');
+  }
+}
+
+async function copyNotionHtml() {
+  try {
+    const html = generateNotionHtml();
+    const md = generateNotionMarkdown();
+    // 剪貼簿同時放 text/html（Notion 貼上時會用 HTML）跟 text/plain（其他地方用 MD）
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([md], { type: 'text/plain' }),
+        })
+      ]);
+    } else {
+      await navigator.clipboard.writeText(md);
+    }
+    alert('✅ 已複製！打開 Notion 頁面 Ctrl/Cmd + V 貼上，H1 藍色 / H2 綠色 / H3 黃色會直接呈現。');
+  } catch (err) {
+    console.error('複製失敗', err);
+    alert('複製失敗：' + err.message + '\n（有些瀏覽器需要 HTTPS 環境才允許剪貼簿寫入）');
+  }
+}
+
+function generateNotionHtml() {
+  const md = generateNotionMarkdown();
+  const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const lines = md.split('\n');
+  const out = [];
+  let inAside = false, asideBuf = [];
+  const flushAside = () => {
+    if (asideBuf.length) {
+      out.push('<blockquote style="border-left:3px solid #2E75B6; background:#EAF3FB; padding:8px 12px; margin:8px 0;">💡 ' + asideBuf.map(escape).join('<br>') + '</blockquote>');
+      asideBuf = [];
+    }
+  };
+  lines.forEach(raw => {
+    const line = raw;
+    if (line.trim() === '<aside>') { inAside = true; return; }
+    if (line.trim() === '</aside>') { inAside = false; flushAside(); return; }
+    if (inAside) { if (line.trim() && line.trim() !== '💡') asideBuf.push(line.trim()); return; }
+    if (/^# /.test(line))      out.push('<h1 style="color:#2E75B6;">' + escape(line.replace(/^# /, '')) + '</h1>');
+    else if (/^## /.test(line)) out.push('<h2 style="color:#548235;">' + escape(line.replace(/^## /, '')) + '</h2>');
+    else if (/^### /.test(line)) out.push('<h3 style="color:#BF8F00;">' + escape(line.replace(/^### /, '')) + '</h3>');
+    else if (/^ {8}- /.test(line))   out.push('<div style="margin-left:60px;">◦ ' + escape(line.replace(/^ {8}- /, '')) + '</div>');
+    else if (/^ {4}- /.test(line))   out.push('<div style="margin-left:30px;">• ' + escape(line.replace(/^ {4}- /, '')) + '</div>');
+    else if (/^- /.test(line))       out.push('<div>• ' + escape(line.replace(/^- /, '')) + '</div>');
+    else if (line.trim() === '')     out.push('<br>');
+    else                             out.push('<div>' + escape(line) + '</div>');
+  });
+  return '<div style="font-family:-apple-system,\'Segoe UI\',sans-serif; line-height:1.6;">' + out.join('\n') + '</div>';
+}
+
+function generateNotionMarkdown() {
+  const a = state.answers || {};
+  const g = qid => {
+    const ans = a[qid];
+    if (!ans) return 'TBC';
+    if (ans.is_advice_needed) return '💬 尚未決定，需要顧問建議並進一步討論';
+    const v = ans.value;
+    if (v === null || v === undefined || v === '') return 'TBC';
+    return v;
+  };
+  const gArr = qid => {
+    const v = g(qid);
+    if (v === 'TBC' || typeof v === 'string') return typeof v === 'string' ? [v] : ['TBC'];
+    if (Array.isArray(v)) return v;
+    if (v.selected || v.custom) return [...(v.selected || []), ...(v.custom || []).filter(Boolean)];
+    return [String(v)];
+  };
+  const gObj = (qid, field) => {
+    const ans = a[qid];
+    if (!ans || !ans.value || typeof ans.value !== 'object') return 'TBC';
+    return ans.value[field] || 'TBC';
+  };
+  const gBranch = qid => {
+    const ans = a[qid];
+    if (!ans || !ans.value) return 'TBC';
+    if (ans.is_advice_needed) return '💬 尚未決定，需要顧問建議';
+    const v = ans.value;
+    if (typeof v === 'object' && v.choice) return v.url ? `${_branchLabel(v.choice)}：${v.url}` : _branchLabel(v.choice);
+    return String(v);
+  };
+
+  const brand = g('brand_name');
+  const region = _regionLabel(g('business_region'));
+  const existingSiteRaw = a.existing_site && a.existing_site.value;
+  const hasSite = existingSiteRaw && existingSiteRaw.choice === 'yes';
+  const siteUrl = hasSite ? (existingSiteRaw.url || 'TBC') : '無';
+  const domain = a.domain_name && a.domain_name.value;
+
+  const md = [];
+  md.push(`# 資料搜集`);
+  md.push('');
+  md.push('<aside>');
+  md.push('💡');
+  md.push('本文件由「Shopify 建站需求訪談」系統自動生成');
+  md.push('</aside>');
+  md.push('');
+
+  // ========== H1 Foundation ==========
+  md.push(`# Foundation-網站基本資訊`);
+  md.push('');
+  md.push(`- Shopify 方案`);
+  md.push(`    - TBC`);
+  md.push(`- 選定使用的主題`);
+  md.push(`    - TBC`);
+  md.push(`- 商店名稱`);
+  md.push(`    - ${brand}`);
+  md.push(`- 商店描述`);
+  md.push(`    ${g('brand_intro')}`);
+  md.push(`- 商店信箱`);
+  md.push(`    - ${g('store_contact_email')}`);
+  md.push(`- 商店聯絡電話`);
+  md.push(`    - ${g('store_contact_phone')}`);
+  md.push(`- 業務地區`);
+  md.push(`    - ${region}`);
+  md.push(`- 現有網站`);
+  md.push(`    - ${hasSite ? siteUrl : '無 · 全新品牌'}`);
+  if (domain && !hasSite) {
+    md.push(`- 網域名稱`);
+    md.push(`    - ${gBranch('domain_name')}`);
+  }
+  md.push(`- 參考網站風格`);
+  const refsVal = a.references && a.references.value;
+  if (refsVal && refsVal.mode === 'has' && Array.isArray(refsVal.urls)) {
+    refsVal.urls.filter(Boolean).forEach(u => md.push(`    - ${u}`));
+  } else {
+    md.push(`    - 沒有特別想法，希望顧問建議`);
+  }
+  md.push(`- 網站時區`);
+  md.push(`    - ${g('timezone')}`);
+  md.push(`- 預設商品重量單位`);
+  const wu = g('weight_unit');
+  ['kg','g','lb','oz'].forEach(u => {
+    const label = { kg:'公斤 (kg)', g:'公克 (g)', lb:'英磅 (lb)', oz:'盎司 (oz)' }[u];
+    md.push(`    - [${wu === u ? 'x' : ' '}] ${label}`);
+  });
+  md.push(`- 帳單資訊`);
+  md.push(`    - 合法公司名稱 Legal Company Name`);
+  md.push(`        - ${gObj('company_info','legal_name')}`);
+  md.push(`    - 公司統一編號／稅籍編號 Business Registration or Tax ID`);
+  md.push(`        - ${gObj('company_info','tax_id')}`);
+  md.push(`    - 帳務聯絡 Email Billing Contact Email`);
+  md.push(`        - ${gObj('company_info','billing_email')}`);
+  md.push(`    - 公司電話 Company Phone`);
+  md.push(`        - ${gObj('company_info','phone')}`);
+  md.push(`    - 街道地址 Street Address`);
+  md.push(`        - ${gObj('company_info','street')}`);
+  md.push(`    - 城市 City`);
+  md.push(`        - ${gObj('company_info','city')}`);
+  md.push(`    - 州／省／縣市 State / Province / Region`);
+  md.push(`        - ${gObj('company_info','state')}`);
+  md.push(`    - 國家／地區 Country / Region`);
+  md.push(`        - ${gObj('company_info','country')}`);
+  md.push(`    - 郵遞區號 Postal Code`);
+  md.push(`        - ${gObj('company_info','zip')}`);
+  md.push(`- 網站 Logo`);
+  md.push(`    - ${_fileValue(a.logo)}`);
+  md.push(`- Favicon`);
+  md.push(`    - 從 Logo 自動生成`);
+  md.push(`- 企業識別資訊 CI`);
+  md.push(`    - ${_ciValue(a.ci_manual)}`);
+  md.push(`- 字型偏好`);
+  md.push(`    - ${gBranch('font_pref')}`);
+  md.push(`- 管理員信箱清單`);
+  const admins = a.admin_emails && a.admin_emails.value;
+  if (Array.isArray(admins) && admins.length) {
+    admins.filter(x => x && x.email).forEach(r => md.push(`    - ${r.email}${r.role ? ` (${r.role})` : ''}`));
+  } else {
+    md.push(`    - TBC`);
+  }
+  md.push(`- 通知信的寄件信箱`);
+  md.push(`    - ${g('notification_from_email')}`);
+  md.push(`- 商店所有權人信箱`);
+  md.push(`    - ${gBranch('store_owner_email')}`);
+  md.push(`- 網站 主 / 副色系`);
+  md.push(`    - 主：${gObj('brand_colors','main')}`);
+  md.push(`    - 副：${gObj('brand_colors','secondary')}`);
+  md.push(`- 社群媒體 Social Media`);
+  _socialList(a.social).forEach(s => md.push(`    - ${s}`));
+  md.push(`- 訂單編號前綴、後綴`);
+  md.push(`    - ${_orderPrefixValue(a.order_prefix)}`);
+  md.push('');
+
+  // ========== H1 營運模式 ==========
+  md.push(`# 營運模式Business Model`);
+  md.push('');
+  md.push(`- 網站主要銷售對象`);
+  md.push(`    - ${_customerTypeLabel(g('customer_type'))}`);
+  md.push(`- 這次網站類型`);
+  md.push(`    - ${_operatingModelLabel(g('operating_model'))}`);
+  md.push(`- 第一階段主要營運模式`);
+  md.push(`    - TBC`);
+  md.push(`- 倉儲地址`);
+  md.push(`    - ${_warehouseValue(a.warehouse, gObj('company_info','street'))}`);
+  md.push(`- 庫存來源`);
+  md.push(`    - Shopify`);
+  md.push(`- 商店主要語言`);
+  md.push(`    - ${gBranch('primary_language')}`);
+  md.push(`- 網站其他語言`);
+  md.push(`    - ${_multiValue(a.additional_languages)}`);
+  md.push(`- 商店主要貨幣`);
+  md.push(`    - ${g('primary_currency')}`);
+  md.push(`- 其他顯示幣別`);
+  md.push(`    - ${_multiValue(a.additional_currencies)}`);
+  md.push(`- 預計商品數量`);
+  md.push(`    - ${_productQtyLabel(g('product_qty'))}`);
+  md.push(`- 商品類型`);
+  gArr('product_types').forEach(t => md.push(`    - ${_productTypeLabel(t)}`));
+  md.push(`- 是否限制會員登入後才能購買？`);
+  md.push(`    - ${g('require_login') === 'yes' ? '是' : '否，允許非會員結帳'}`);
+  md.push(`- 商品價格與稅金顯示`);
+  md.push(`    - ${_priceDisplayLabel(g('price_display'))}`);
+  md.push(`- 會員登入流程`);
+  gArr('member_login_methods').forEach(m => md.push(`    - ${_loginMethodLabel(m)}`));
+  md.push('');
+
+  // ========== H1 主要功能需求 ==========
+  md.push(`# 主要功能需求Key Requirements`);
+  md.push('');
+  md.push(`- 預計提供哪些付款方式？`);
+  gArr('payment_methods').forEach(p => md.push(`    - ${_paymentMethodLabel(p)}`));
+  md.push(`- 合作金流商`);
+  gArr('payment_provider').forEach(p => md.push(`    - ${_providerLabel(p)}`));
+  md.push(`- 台灣境內配送方式`);
+  gArr('shipping_methods_tw').forEach(s => md.push(`    - ${_shipTwLabel(s)}`));
+  md.push(`- 國際配送承運商`);
+  gArr('shipping_methods_intl').forEach(s => md.push(`    - ${_shipIntlLabel(s)}`));
+  md.push(`- 合作物流商`);
+  md.push(`    - ${gBranch('logistics_partner')}`);
+  md.push(`- 運費策略`);
+  gArr('shipping_fee_strategy').forEach(f => md.push(`    - ${_feeStrategyLabel(f)}`));
+  md.push(`- 電子發票`);
+  md.push(`    - ${_fapiaoLabel(g('fapiao'))}`);
+  if (a.fapiao && a.fapiao.value === 'need_has_provider') {
+    md.push(`    - 服務商：${gBranch('fapiao_provider')}`);
+  }
+  md.push(`- 外部系統串接`);
+  gArr('external_systems').forEach(s => md.push(`    - ${_systemLabel(s)}`));
+  md.push('');
+
+  // ========== 進階功能 (第二階段) ==========
+  const features = a.features && a.features.value;
+  if (features && Array.isArray(features) && features.length) {
+    md.push(`# 進階功能需求 / 第二階段擴充建議`);
+    md.push('');
+    md.push('<aside>');
+    md.push('💡');
+    md.push('以下為客戶勾選的進階功能，需與合約範疇對照，判斷本次執行或列為第二階段');
+    md.push('</aside>');
+    md.push('');
+    features.forEach(f => md.push(`- ${_featureLabel(f)}`));
+    md.push('');
+  }
+
+  // ========== 其他補充 ==========
+  const future = a.future_plans && a.future_plans.value;
+  if (future) {
+    md.push(`# 其他想討論的補充事項`);
+    md.push('');
+    md.push(String(future));
+    md.push('');
+  }
+
+  return md.join('\n');
+}
+
+// —— 標籤對照函式 ——
+function _regionLabel(v) { return ({ tw:'台灣', sea:'東南亞', jp:'日本', us:'美國', eu:'歐洲', other:'其他' })[v] || v; }
+function _customerTypeLabel(v) { return ({ b2c:'B2C 一般消費者', b2b:'B2B 企業／批發', both:'B2C + B2B 兩者' })[v] || v; }
+function _operatingModelLabel(v) { return ({ brand_only:'形象網站（無購物）', shopify_online:'Shopify 線上商店', shopify_pos:'線上商店 + Shopify POS' })[v] || v; }
+function _productTypeLabel(v) { return ({ physical:'實體商品', digital:'數位商品', preorder:'預購商品', subscription:'訂閱制', service:'服務預約／票券' })[v] || v; }
+function _productQtyLabel(v) { return ({ '1-20':'1-20', '21-100':'21-100', '101-500':'101-500', '500+':'500+', 'unknown':'還不確定' })[v] || v; }
+function _priceDisplayLabel(v) { return ({ inc_tax:'商品價格已含稅', exc_tax:'商品價格不包含稅金，稅金另行計算', both:'含稅、未稅同時顯示' })[v] || v; }
+function _loginMethodLabel(v) { return ({ email_otp:'Email OTP 驗證登入', google:'Google 一鍵登入', facebook:'Facebook 一鍵登入', shop:'Shop 一鍵登入' })[v] || v; }
+function _paymentMethodLabel(v) { return ({ credit_once:'信用卡一次付清', credit_installment:'信用卡分期付款', atm:'ATM / 虛擬帳號', cod:'貨到付款', line_pay:'LINE Pay', jkopay:'街口支付', apple_pay:'Apple Pay', google_pay:'Google Pay', paypal:'PayPal', stripe:'Stripe', shopify_payments:'Shopify Payments' })[v] || v; }
+function _providerLabel(v) { return ({ undecided:'尚未決定', shopify_payments:'Shopify Payments', greenworld:'綠界 ECPay', tappay:'TapPay', paynow:'PayNow', hitrust:'HiTrust', stripe:'Stripe', paypal:'PayPal', other:'其他' })[v] || v; }
+function _shipTwLabel(v) { return ({ cvs_normal:'超商取貨店到店（7-11 / 全家等）', cvs_bulk:'超商取貨（大宗）', cvs_cod:'超商貨到付款', post:'國內郵局宅配', tcat:'黑貓宅急便', hct:'新竹物流', lalamove:'Lalamove', ta_q_bin:'大榮貨運', sf:'順豐速運', store:'門市／指定地點自取', undecided:'尚未確認' })[v] || v; }
+function _shipIntlLabel(v) { return ({ none:'無國際配送需求', fedex:'FedEx', dhl:'DHL Express', ups:'UPS', usps:'USPS', sf_intl:'順豐速運（國際）', ems:'EMS / 郵政國際包裹', '3pl':'由海外倉庫或 3PL 提供', undecided:'尚未確認' })[v] || v; }
+function _feeStrategyLabel(v) { return ({ flat:'統一單價', by_method:'依配送方式收', by_region:'依配送區域收', by_weight:'依重量或體積', free_over:'滿額免運', free_all:'全站免運', realtime:'物流商即時運費' })[v] || v; }
+function _fapiaoLabel(v) { return ({ no:'不需要', need_no_provider:'需要，尚未有合作供應商', need_has_provider:'需要，已有合作供應商' })[v] || v; }
+function _systemLabel(v) { return ({ none:'無', unsure:'尚未決定', erp:'ERP', crm:'CRM', pos:'POS', wms:'WMS 倉儲', member:'會員系統', '3pl':'第三方物流', other:'其他' })[v] || v; }
+function _featureLabel(v) { return ({ member_tier:'會員分級', points:'點數回饋 / 集點', birthday:'生日禮 / 專屬優惠', wishlist:'Wishlist 收藏', referral:'推薦好友獎勵', review:'商品評論 / 評分', bundle:'組合商品 / 加購', upsell:'結帳加購 / Upsell', popup:'彈跳視窗 / 導客訂閱', affiliate:'Affiliate 分潤', live_chat:'線上客服 Live Chat', chatbot:'AI 聊天機器人', line_integration:'LINE 官方帳號 整合客服', faq:'進階 FAQ', help_desk:'客服工單系統', email_marketing:'Email 行銷', sms_marketing:'SMS 行銷', abandon_cart:'棄單挽回', segment_push:'分眾推播', page_builder:'進階頁面編輯器', seo_tools:'進階 SEO 工具', heatmap:'熱區分析', multi_lang_translate:'多語系翻譯管理' })[v] || v; }
+function _branchLabel(v) { return ({ yes:'有', no:'沒有', undecided:'尚未決定', shopify:'使用 Shopify 內建', custom:'有指定', planned:'有想好，尚未購買', owned:'有想好，已購買', none:'無', ecpay:'綠界 ECPay', jingyao:'鯨躍', ezpay:'ezPay（藍新）', other:'其他', 'zh-TW':'繁體中文', en:'English', ja:'日本語', 'zh-CN':'简体中文', ko:'한국어' })[v] || v; }
+function _multiValue(ans) {
+  if (!ans || !ans.value) return '無';
+  const v = ans.value;
+  if (Array.isArray(v)) return v.map(_branchLabel).join('、') || '無';
+  const list = [...(v.selected || []), ...(v.custom || []).filter(Boolean)];
+  return list.length ? list.map(_branchLabel).join('、') : '無';
+}
+function _fileValue(ans) {
+  if (!ans || !ans.value) return 'TBC';
+  const v = ans.value;
+  if (v.file && v.file.name) return `已上傳：${v.file.name}`;
+  return 'TBC';
+}
+function _ciValue(ans) {
+  if (!ans || !ans.value) return 'TBC';
+  const v = ans.value;
+  if (v.mode === 'has' && v.file) return `已上傳：${v.file.name}`;
+  if (v.mode === 'wip') return '整理中，後續提供';
+  if (v.mode === 'none') return '無 CI 手冊';
+  return 'TBC';
+}
+function _socialList(ans) {
+  if (!ans || !ans.value) return ['TBC'];
+  const v = ans.value;
+  if (v.noSocial) return ['尚未建立社群'];
+  const list = [];
+  ['facebook','instagram','youtube','tiktok','line','x'].forEach(k => {
+    if (v[k]) list.push(`${k.toUpperCase()}: ${v[k]}`);
+  });
+  (v.custom || []).forEach(c => { if (c && c.url) list.push(`${c.name || '其他'}: ${c.url}`); });
+  return list.length ? list : ['TBC'];
+}
+function _orderPrefixValue(ans) {
+  if (!ans || !ans.value) return 'TBC';
+  const v = ans.value;
+  if (v.none) return '無識別碼（使用預設 #1001）';
+  const p = v.prefix || '', s = v.suffix || '';
+  if (!p && !s) return 'TBC';
+  return `Prefix: ${p || '無'} / Suffix: ${s || '無'} → 範例 ${p}1001${s}`;
+}
+function _warehouseValue(ans, fallbackAddr) {
+  if (!ans || !ans.value) return 'TBC';
+  const v = ans.value;
+  if (v.mode === 'same_as_billing') return fallbackAddr || '與公司登記地址相同';
+  if (v.mode === 'later') return '尚未確認';
+  if (v.mode === 'fill' && Array.isArray(v.addresses)) {
+    return v.addresses.filter(a => a && a.street).map(a => `${a.street || ''}, ${a.city || ''}, ${a.zip || ''}`).join(' / ') || 'TBC';
+  }
+  return 'TBC';
 }
 
 // ============ Utils ============
