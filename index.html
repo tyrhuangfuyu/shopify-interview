@@ -1413,8 +1413,9 @@ const SCHEMA = [
 // 🔌 後端串接（一鍵版：這個 HTML 就在 Apps Script 內，直接用 google.script.run）
 // ============================================================
 const USE_GAS = typeof google !== 'undefined' && google.script && google.script.run;
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz-hZR6Mqb7L7yNvD-BfgT3FiS2SsznnpVS3LPE_YvvliX8i6eUbrZBGG9t_FotxbrkFQ/exec';
-const EXPECTED_BACKEND_VERSION = '2026-08-24-v8-wide-answers';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwNxNBfidhhcXDVEv8yE8gUJ4JyXkG5sEEN3L6c_nsyoDXkvn0af0WGf_2Wdr9oVKBtpA/exec';
+const EXPECTED_BACKEND_VERSION = '2026-08-24-v9-wide-answers-safe';
+const EXPECTED_ANSWERS_FORMAT = 'wide_one_session_per_row';
 let _backendVersionWarning = '';
 
 const STORAGE_KEY = 'shopify_interview_v1';
@@ -3984,12 +3985,15 @@ async function bootstrapInitialState() {
   // 只更新 Code.gs 但沒有 New version → Deploy 時，Web App 仍會用舊格式寫 Answers。
   try {
     const ver = await getBackendVersion();
-    if (!ver || !ver.ok || ver.version !== EXPECTED_BACKEND_VERSION) {
+    // 不再只比對固定版本字串；只要後端明確宣告一客戶一行格式即可。
+    // 這樣未來 v10 / v11 後端不會因版本字串不同被誤判成舊版。
+    if (!ver || !ver.ok || ver.answers_format !== EXPECTED_ANSWERS_FORMAT) {
       const got = ver && ver.version ? ver.version : '舊版／無法辨識';
-      _backendVersionWarning = '⚠️ 後端 Apps Script 尚未部署到新版（目前：' + got + '；需要：' + EXPECTED_BACKEND_VERSION + '）。在重新部署前，Answers 可能仍會被寫成「一題一行」。';
+      const gotFormat = ver && ver.answers_format ? ver.answers_format : '未回傳';
+      _backendVersionWarning = '⚠️ GitHub Pages 目前連到的 Apps Script 不是新版寬表後端（目前版本：' + got + '；Answers 格式：' + gotFormat + '）。請確認 HTML 內 APPS_SCRIPT_URL 是「目前部署中的 /exec 網址」，並重新部署 Apps Script。';
     }
   } catch (_) {
-    _backendVersionWarning = '⚠️ 無法確認 Apps Script 後端版本。請確認已使用 Manage deployments → Edit → New version → Deploy。';
+    _backendVersionWarning = '⚠️ 無法確認 Apps Script 後端版本。最常見原因是 HTML 內 APPS_SCRIPT_URL 仍指向舊 Deployment。請確認目前部署的 /exec 網址後再更新 GitHub Pages。';
   }
 
   // 明確帶 ?id=... 開啟時，遠端 Sessions 必須是主要資料來源。
