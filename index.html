@@ -545,15 +545,27 @@
     border-radius: var(--r-2);
     text-align: left;
   }
+  .file-upload-progress-summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: 10px; font-size: 12px; color: var(--text-2); font-weight: 550;
+  }
+  .file-upload-progress-summary-pct { flex-shrink: 0; font-weight: 700; color: var(--text); }
+  .file-upload-progress-list { display: flex; flex-direction: column; gap: 10px; }
+  .file-upload-progress-item {
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--r-2);
+  }
   .file-upload-progress-head {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    margin-bottom: 8px; font-size: 12px; color: var(--text-2);
+    margin-bottom: 7px; font-size: 12px; color: var(--text-2);
   }
   .file-upload-progress-name {
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     font-weight: 550; color: var(--text);
   }
-  .file-upload-progress-pct { flex-shrink: 0; font-weight: 650; color: var(--text); }
+  .file-upload-progress-pct { flex-shrink: 0; font-weight: 700; color: var(--text); }
   .file-upload-progress-track {
     height: 8px; background: #e5e5e5; border-radius: var(--r-full); overflow: hidden;
   }
@@ -561,7 +573,7 @@
     height: 100%; width: 0%; background: var(--primary); border-radius: var(--r-full);
     transition: width .18s ease;
   }
-  .file-upload-progress-status { margin-top: 7px; font-size: 11px; color: var(--text-3); }
+  .file-upload-progress-status { margin-top: 6px; font-size: 11px; color: var(--text-3); }
 
   /* Address */
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -1347,11 +1359,11 @@ const SCHEMA = [
             { value: 'member_tier', label: '會員分級（VIP / 銀卡 / 金卡）', desc: '依消費金額、訂單數、點數或其他條件自動升降會員等級，並提供不同會員權益。', badge: '需 App' },
             { value: 'points', label: '點數回饋 / 集點', desc: '消費、註冊、生日或活動等行為獲得點數，可用於折抵或兌換優惠。', badge: '需 App' },
             { value: 'birthday', label: '生日禮 / 會員專屬優惠', desc: '依生日、會員等級或顧客標籤提供專屬折扣、購物金或其他優惠。', badge: '需 App' },
-            { value: 'wishlist', label: 'Wishlist 收藏', desc: '顧客可收藏喜歡的商品，登入後保存個人收藏清單。', badge: '需 App' },
+            { value: 'wishlist', label: 'Wishlist 收藏', desc: '顧客可收藏喜歡的商品，登入後保存個人收藏清單。', badge: '推薦・需 App' },
             { value: 'referral', label: '推薦好友獎勵 Referral', desc: '會員分享推薦連結或推薦碼，好友完成指定條件後提供雙方獎勵。', badge: '需 App' },
             { value: 'segment_tags', label: '顧客分眾 / 標籤自動化', desc: '依消費金額、購買商品、會員等級或行為，自動標記與分群顧客。', badge: '通常需 App' },
             { value: 'wholesale_pricing', label: '批發價 / 分眾價格', desc: '依顧客、會員等級、公司或標籤顯示不同價格、折扣或商品目錄。', badge: '通常需 App' },
-            { value: 'content_lock', label: '頁面上鎖 / 會員內容限制', desc: '限制特定會員、顧客標籤或已登入顧客才能瀏覽指定頁面、商品或內容。', badge: '需 App' },
+            { value: 'content_lock', label: '頁面上鎖 / 會員內容限制', desc: '限制特定會員、顧客標籤或已登入顧客才能瀏覽指定頁面、商品或內容。', badge: '推薦・需 App' },
             { value: 'warranty_registration', label: '保固註冊 / 保固索賠', desc: '讓顧客登錄商品、序號與購買資料建立保固紀錄，並可提交維修、換貨或保固索賠申請。', badge: '需 App' },
           ] },
           { title: 'Catalog｜商品／目錄', options: [
@@ -1364,6 +1376,7 @@ const SCHEMA = [
             { value: 'upsell', label: '結帳加購 / 追加銷售 Upsell', desc: '在購物車、結帳或付款完成頁推薦相關商品、升級方案或優惠，提高客單價。', badge: '可能需 App' },
             { value: 'affiliate', label: 'Affiliate / KOL 分潤', desc: '建立合作夥伴專屬連結或折扣碼，追蹤訂單並計算佣金。', badge: '需 App' },
             { value: 'popup', label: '彈跳視窗 / 導客訂閱', desc: '透過 Popup、優惠碼或表單蒐集 Email / SMS，累積會員與行銷名單。', badge: '通常需 App' },
+            { value: 'free_gift_promotions', label: 'Free Gift / 特殊優惠模組', desc: '支援滿額贈、滿件贈、指定商品贈、分級贈品等進階促購規則，提供比基本折扣更彈性的贈品與優惠設定。', badge: '推薦・需 App' },
           ] },
           { title: 'Market｜行銷／分析', options: [
             { value: 'ai_marketing_agent', label: 'AI 營運與行銷分析 Agent', desc: '歐斯瑞開發。協助中小企業分析 Shopify 流量、轉換、銷售、商品與顧客數據，主動發現營運問題與成長機會，提供異常提醒、改善建議與策略規劃。', badge: '歐斯瑞開發APP・推薦' },
@@ -1381,9 +1394,10 @@ const SCHEMA = [
             { value: 'instagram_feed', label: 'Instagram 社群內容嵌入', desc: '將 Instagram 貼文、Reels 或社群內容動態顯示於官網。', badge: '通常需 App' },
           ] },
           { title: 'Other｜客服／營運工具', options: [
-            { value: 'live_chat', label: 'Live Chat 線上客服', desc: '讓客服人員直接與網站訪客進行即時聊天與諮詢。', badge: '需 App' },
-            { value: 'chatbot', label: 'AI 聊天機器人', desc: '透過 AI 回答商品、訂單、FAQ、品牌資訊等常見問題，降低客服人工負擔。', badge: '需 App' },
+            { value: 'live_chat', label: 'Live Chat 線上客服', desc: '讓客服人員直接與網站訪客進行即時聊天與諮詢。', badge: '推薦・需 App' },
+            { value: 'chatbot', label: 'AI 聊天機器人', desc: '透過 AI 回答商品、訂單、FAQ、品牌資訊等常見問題，降低客服人工負擔。', badge: '推薦・需 App' },
             { value: 'help_desk', label: '客服工單系統（Gorgias / Zendesk）', desc: '整合 Email、Live Chat、社群與訂單資料，集中管理客服案件與處理紀錄。', badge: '需 App' },
+            { value: 'self_service_returns', label: '自助退貨功能', desc: '提供顧客自助提交退貨申請，可自訂退貨原因與申請欄位，並集中管理退貨處理流程。', badge: '推薦・需 App' },
             { value: 'warranty_management', label: '保固案件管理', desc: '供客服與售後團隊查看保固註冊、維修、換貨及索賠案件，追蹤處理進度與顧客溝通。', badge: '需 App' },
           ] },
         ] },
@@ -2078,7 +2092,8 @@ function renderInput(q, currentAns) {
           <div class="options-grid" style="grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px;">
             ${g.options.map(o => {
               let badgeStyle = 'background:var(--warning-bg); color:var(--warning);';
-              if (o.badge && (o.badge.includes('推薦') || o.badge.includes('歐斯瑞'))) badgeStyle = 'background:var(--success-bg); color:var(--success);';
+              if (o.badge && o.badge.includes('推薦')) badgeStyle = 'background:#d72c0d; color:#fff; box-shadow:0 1px 2px rgba(215,44,13,.18);';
+              else if (o.badge && o.badge.includes('歐斯瑞')) badgeStyle = 'background:var(--success-bg); color:var(--success);';
               else if (o.badge && (o.badge.includes('可能') || o.badge.includes('通常') || o.badge.includes('進階'))) badgeStyle = 'background:var(--info-bg); color:var(--info);';
               return `
                 <button class="option-card ${(v || []).includes(o.value) ? 'selected' : ''}" style="min-height:112px; padding:14px; gap:6px;" onclick="toggleMulti('${q.id}', '${o.value}')">
@@ -2827,33 +2842,59 @@ async function handleFileList(fileList, qid) {
     drop.style.opacity = '.8';
   }
 
-  // 上傳開始才建立進度 UI；完成後 renderQuestion() 會自動移除。
+  // 每個檔案各自顯示百分比與進度條；上方另外顯示整批總進度。
   let progressBox = null;
+  const progressValues = arr.map(() => 0);
   if (drop) {
     progressBox = document.createElement('div');
     progressBox.className = 'file-upload-progress';
     progressBox.innerHTML = `
-      <div class="file-upload-progress-head">
-        <span class="file-upload-progress-name">準備上傳…</span>
-        <span class="file-upload-progress-pct">0%</span>
+      <div class="file-upload-progress-summary">
+        <span class="file-upload-progress-summary-text">共 ${arr.length} 個檔案・準備上傳</span>
+        <span class="file-upload-progress-summary-pct">0%</span>
       </div>
-      <div class="file-upload-progress-track"><div class="file-upload-progress-fill"></div></div>
-      <div class="file-upload-progress-status">請勿關閉頁面</div>
+      <div class="file-upload-progress-list">
+        ${arr.map((file, i) => `
+          <div class="file-upload-progress-item" data-file-index="${i}">
+            <div class="file-upload-progress-head">
+              <span class="file-upload-progress-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
+              <span class="file-upload-progress-pct">0%</span>
+            </div>
+            <div class="file-upload-progress-track"><div class="file-upload-progress-fill"></div></div>
+            <div class="file-upload-progress-status">等待上傳</div>
+          </div>
+        `).join('')}
+      </div>
     `;
     drop.appendChild(progressBox);
   }
 
-  const updateProgress = (fileIndex, file, filePct, status) => {
+  const updateSummary = (activeIndex) => {
     if (!progressBox) return;
-    const totalPct = Math.round(((fileIndex + (filePct / 100)) / arr.length) * 100);
-    const nameEl = progressBox.querySelector('.file-upload-progress-name');
-    const pctEl = progressBox.querySelector('.file-upload-progress-pct');
-    const fillEl = progressBox.querySelector('.file-upload-progress-fill');
-    const statusEl = progressBox.querySelector('.file-upload-progress-status');
-    if (nameEl) nameEl.textContent = `正在處理 ${fileIndex + 1} / ${arr.length}：${file.name}`;
-    if (pctEl) pctEl.textContent = totalPct + '%';
-    if (fillEl) fillEl.style.width = totalPct + '%';
-    if (statusEl) statusEl.textContent = status || '請勿關閉頁面';
+    const totalPct = Math.round(progressValues.reduce((sum, n) => sum + n, 0) / arr.length);
+    const summaryText = progressBox.querySelector('.file-upload-progress-summary-text');
+    const summaryPct = progressBox.querySelector('.file-upload-progress-summary-pct');
+    if (summaryText) {
+      summaryText.textContent = totalPct >= 100
+        ? `共 ${arr.length} 個檔案・全部上傳完成`
+        : `共 ${arr.length} 個檔案・正在上傳 ${Math.min(activeIndex + 1, arr.length)} / ${arr.length}`;
+    }
+    if (summaryPct) summaryPct.textContent = totalPct + '%';
+  };
+
+  const updateProgress = (fileIndex, file, filePct, status) => {
+    const pct = Math.max(0, Math.min(100, Math.round(filePct || 0)));
+    progressValues[fileIndex] = pct;
+    if (!progressBox) return;
+    const item = progressBox.querySelector(`.file-upload-progress-item[data-file-index="${fileIndex}"]`);
+    if (!item) return;
+    const pctEl = item.querySelector('.file-upload-progress-pct');
+    const fillEl = item.querySelector('.file-upload-progress-fill');
+    const statusEl = item.querySelector('.file-upload-progress-status');
+    if (pctEl) pctEl.textContent = pct + '%';
+    if (fillEl) fillEl.style.width = pct + '%';
+    if (statusEl) statusEl.textContent = status || (pct >= 100 ? '上傳完成' : '上傳中…');
+    updateSummary(fileIndex);
   };
 
   try {
@@ -2863,25 +2904,25 @@ async function handleFileList(fileList, qid) {
       if (drop) drop.setAttribute('data-uploading', `正在上傳 ${i + 1}/${arr.length}：${file.name}`);
       updateProgress(i, file, 0, '準備上傳…');
       uploaded.push(await uploadAttachmentRemote(file, qid, (pct, status) => updateProgress(i, file, pct, status)));
+      updateProgress(i, file, 100, '上傳完成');
     }
-    if (progressBox) {
-      const fillEl = progressBox.querySelector('.file-upload-progress-fill');
-      const pctEl = progressBox.querySelector('.file-upload-progress-pct');
-      const statusEl = progressBox.querySelector('.file-upload-progress-status');
-      if (fillEl) fillEl.style.width = '100%';
-      if (pctEl) pctEl.textContent = '100%';
-      if (statusEl) statusEl.textContent = '上傳完成';
-    }
+    progressValues.fill(100);
+    updateSummary(arr.length - 1);
     setAnswer(qid, { ...cur, mode: 'has', files: [...files, ...uploaded] });
     saveState();
-    // 稍微保留完成狀態，讓使用者看得到 100%。
-    await new Promise(r => setTimeout(r, 350));
+    // 稍微保留完成狀態，讓使用者看得到每個檔案都到 100%。
+    await new Promise(r => setTimeout(r, 650));
     renderQuestion();
   } catch (err) {
     console.warn('attachment upload failed', err);
     if (progressBox) {
-      const statusEl = progressBox.querySelector('.file-upload-progress-status');
+      const activeIdx = progressValues.findIndex(v => v < 100);
+      const idx = activeIdx >= 0 ? activeIdx : 0;
+      const item = progressBox.querySelector(`.file-upload-progress-item[data-file-index="${idx}"]`);
+      const statusEl = item && item.querySelector('.file-upload-progress-status');
       if (statusEl) statusEl.textContent = '上傳失敗';
+      const summaryText = progressBox.querySelector('.file-upload-progress-summary-text');
+      if (summaryText) summaryText.textContent = '上傳中斷，請重新嘗試';
     }
     alert('檔案上傳失敗：' + (err && err.message ? err.message : err));
     if (input) {
@@ -3660,7 +3701,7 @@ function _shipIntlLabel(v) { return ({ none:'無國際配送需求', fedex:'FedE
 function _feeStrategyLabel(v) { return ({ flat:'統一單價', by_method:'依配送方式收', by_region:'依配送區域收', by_weight:'依重量或體積', free_over:'滿額免運', free_all:'全站免運', realtime:'物流商即時運費' })[v] || v; }
 function _fapiaoLabel(v) { return ({ no:'不需要', need_no_provider:'需要，尚未有合作供應商', need_has_provider:'需要，已有合作供應商' })[v] || v; }
 function _systemLabel(v) { return ({ none:'無', unsure:'尚未決定', erp:'ERP', crm:'CRM', pos:'POS', wms:'WMS 倉儲', member:'會員系統', '3pl':'第三方物流', other:'其他' })[v] || v; }
-function _featureLabel(v) { return ({ member_tier:'會員分級', points:'點數回饋 / 集點', birthday:'生日禮 / 會員專屬優惠', wishlist:'Wishlist 收藏', referral:'推薦好友獎勵 Referral', segment_tags:'顧客分眾 / 標籤自動化', wholesale_pricing:'批發價 / 分眾價格', content_lock:'頁面上鎖 / 會員內容限制', warranty_registration:'保固註冊 / 保固索賠', bundle:'商品組合 / Bundle', product_addon:'商品加購 / 附加服務', booking:'預約系統', review:'商品評論 / 評分', upsell:'結帳加購 / Upsell', affiliate:'Affiliate / KOL 分潤', popup:'彈跳視窗 / 導客訂閱', ai_marketing_agent:'AI 營運與行銷分析 Agent', email_marketing:'Email 行銷', marketing_automation:'行銷自動化 / 分眾推播', heatmap:'使用者行為分析', scheduled_reports:'定期營運報告', affiliate_analytics:'KOL / Affiliate 成效分析', page_builder:'進階頁面編輯器', seo_tools:'進階 SEO 優化工具', multi_lang_translate:'多語系自動翻譯管理', geo_redirect:'依 IP / 國家自動切換或導向', instagram_feed:'Instagram 社群內容嵌入', live_chat:'Live Chat 線上客服', chatbot:'AI 聊天機器人', help_desk:'客服工單系統', warranty_management:'保固案件管理' })[v] || v; }
+function _featureLabel(v) { return ({ member_tier:'會員分級', points:'點數回饋 / 集點', birthday:'生日禮 / 會員專屬優惠', wishlist:'Wishlist 收藏', referral:'推薦好友獎勵 Referral', segment_tags:'顧客分眾 / 標籤自動化', wholesale_pricing:'批發價 / 分眾價格', content_lock:'頁面上鎖 / 會員內容限制', warranty_registration:'保固註冊 / 保固索賠', bundle:'商品組合 / Bundle', product_addon:'商品加購 / 附加服務', booking:'預約系統', review:'商品評論 / 評分', upsell:'結帳加購 / Upsell', affiliate:'Affiliate / KOL 分潤', popup:'彈跳視窗 / 導客訂閱', ai_marketing_agent:'AI 營運與行銷分析 Agent', email_marketing:'Email 行銷', marketing_automation:'行銷自動化 / 分眾推播', heatmap:'使用者行為分析', scheduled_reports:'定期營運報告', affiliate_analytics:'KOL / Affiliate 成效分析', page_builder:'進階頁面編輯器', seo_tools:'進階 SEO 優化工具', multi_lang_translate:'多語系自動翻譯管理', geo_redirect:'依 IP / 國家自動切換或導向', instagram_feed:'Instagram 社群內容嵌入', live_chat:'Live Chat 線上客服', chatbot:'AI 聊天機器人', help_desk:'客服工單系統', warranty_management:'保固案件管理', self_service_returns:'自助退貨功能', free_gift_promotions:'Free Gift / 特殊優惠模組' })[v] || v; }
 function _branchLabel(v) { return ({ yes:'有', no:'沒有', undecided:'尚未決定', shopify:'使用 Shopify 內建', custom:'有指定', planned:'有想好，尚未購買', owned:'有想好，已購買', none:'無', ecpay:'綠界 ECPay', jingyao:'鯨躍', ezpay:'ezPay（藍新）', other:'其他', 'zh-TW':'繁體中文', en:'English', ja:'日本語', 'zh-CN':'简体中文', ko:'한국어' })[v] || v; }
 function _multiValue(ans) {
   if (!ans || !ans.value) return '無';
