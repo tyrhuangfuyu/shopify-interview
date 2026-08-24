@@ -1499,16 +1499,19 @@ function syncRemote(action) {
 }
 
 function loadRemote(token) {
-  if (!token) return Promise.resolve(null);
+  if (!token) return Promise.resolve({ ok: false, exists: false, error: 'missing_token' });
   if (USE_GAS) {
     return new Promise(resolve => {
       google.script.run
-        .withSuccessHandler(r => resolve(r && r.exists ? r.state : null))
-        .withFailureHandler(err => { console.warn('load fail', err); resolve(null); })
+        .withSuccessHandler(r => resolve(r || { ok: false, exists: false, error: 'empty_response' }))
+        .withFailureHandler(err => {
+          console.warn('load fail', err);
+          resolve({ ok: false, exists: false, error: String(err) });
+        })
         .loadSession(token);
     });
   }
-  if (!APPS_SCRIPT_URL) return Promise.resolve(null);
+  if (!APPS_SCRIPT_URL) return Promise.resolve({ ok: false, exists: false, error: 'missing_api_url' });
 
   // GitHub Pages 與 Apps Script 是跨網域。直接 fetch() 可能被 CORS / redirect 擋住，
   // 因此續填讀取改用 JSONP；Code.gs 會回傳 callback({...})。
@@ -1516,30 +1519,30 @@ function loadRemote(token) {
     const callbackName = '__shopifyInterviewLoad_' + Date.now() + '_' + Math.random().toString(36).slice(2);
     const script = document.createElement('script');
     let finished = false;
+    let timer = null;
     const cleanup = () => {
       if (finished) return;
       finished = true;
       try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
       if (script.parentNode) script.parentNode.removeChild(script);
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
     };
     window[callbackName] = d => {
-      const remote = d && d.exists ? d.state : null;
       cleanup();
-      resolve(remote);
+      resolve(d || { ok: false, exists: false, error: 'empty_response' });
     };
     script.onerror = () => {
       console.warn('load fail: JSONP request error');
       cleanup();
-      resolve(null);
+      resolve({ ok: false, exists: false, error: 'jsonp_request_error' });
     };
     script.src = APPS_SCRIPT_URL + '?action=load&token=' + encodeURIComponent(token) +
       '&callback=' + encodeURIComponent(callbackName) + '&_=' + Date.now();
     script.async = true;
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       console.warn('load fail: JSONP timeout');
       cleanup();
-      resolve(null);
+      resolve({ ok: false, exists: false, error: 'jsonp_timeout' });
     }, 12000);
     document.head.appendChild(script);
   });
@@ -3910,7 +3913,77 @@ function toggleScope() {
   el.querySelector('.scope-notice-toggle').textContent = collapsed ? '展開說明' : '收起';
 }
 loadState();
-render();
+
+function renderResumeLoading(token) {
+  updateTopbar();
+  const shell = $('progressShell');
+  if (shell) shell.classList.add('hidden');
+  main().innerHTML = `
+    <div class="card">
+      <div style="padding:36px 16px; text-align:center;">
+        <div style="font-size:28px; margin-bottom:12px;">⏳</div>
+        <div style="font-size:18px; font-weight:650; margin-bottom:6px;">正在載入先前填寫內容</div>
+        <div style="color:var(--text-2); font-size:13px;">Session ID：${escapeHtml(token || '')}</div>
+      </div>
+    </div>`;
+}
+
+function showResumeNotice(message, type) {
+  const old = document.getElementById('resumeLoadNotice');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'resumeLoadNotice';
+  el.className = 'banner ' + (type === 'warning' ? 'warning' : 'info');
+  el.style.marginBottom = '12px';
+  el.innerHTML = '<span class="banner-icon">' + (type === 'warning' ? '⚠️' : '✅') + '</span><div>' + message + '</div>';
+  const root = main();
+  if (root && root.firstChild) root.insertBefore(el, root.firstChild);
+}
+
+async function bootstrapInitialState() {
+  // 明確帶 ?id=... 開啟時，遠端 Sessions 必須是主要資料來源。
+  // 不能讓同瀏覽器較新的「空白 localStorage」蓋過已存在的遠端草稿。
+  if (_tokenCameFromUrl && APPS_SCRIPT_URL && state.token) {
+    const requestedToken = state.token;
+    renderResumeLoading(requestedToken);
+    const result = await loadRemote(requestedToken);
+
+    if (result && result.ok && result.exists && result.state && typeof result.state === 'object') {
+      Object.assign(state, result.state);
+      state.token = requestedToken;
+      try {
+        localStorage.setItem(STORAGE_KEY + '_' + requestedToken, JSON.stringify(state));
+        sessionStorage.setItem('__interview_token', requestedToken);
+      } catch (_) {}
+      render();
+      showResumeNotice('已從雲端載入先前填寫內容。', 'info');
+      return;
+    }
+
+    // 遠端真的找不到時才退回這台裝置的 localStorage。
+    if (_loadedLocalStateForToken) {
+      state.token = requestedToken;
+      render();
+      showResumeNotice('雲端沒有找到這個 Session，暫時顯示此瀏覽器保存的內容。', 'warning');
+      return;
+    }
+
+    state.token = requestedToken;
+    state.currentView = 'welcome';
+    state.currentSection = 0;
+    state.currentQuestionIdx = 0;
+    state.answers = {};
+    state.submittedAt = null;
+    render();
+    const err = result && result.error ? '（' + escapeHtml(String(result.error)) + '）' : '';
+    showResumeNotice('找不到這個 Session 的雲端草稿 ' + err + '。請先確認 Sessions 工作表中此 ID 的「完整答案 JSON（系統用）」是否仍有內容。', 'warning');
+    return;
+  }
+
+  render();
+}
+
+bootstrapInitialState();
 
 // 全域鍵盤：Enter 快速進下一題。
 // 使用 capture phase，先於 button 的原生 Enter→click 行為攔截，避免「同一題重新點一次 / 倒數重跑」。
@@ -3997,29 +4070,6 @@ document.addEventListener('keyup', e => {
     if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
   }
 }, true);
-
-// 有 token 時讀取遠端最新版。
-// 特別是從 ?id=... 開啟且這台裝置沒有 localStorage 時，必須直接用遠端草稿還原。
-(async () => {
-  if (!APPS_SCRIPT_URL || !state.token) return;
-  const requestedToken = state.token;
-  const remoteState = await loadRemote(requestedToken);
-  if (!remoteState) return;
-
-  const localTime = state.updated_at ? new Date(state.updated_at).getTime() : 0;
-  const remoteTime = remoteState.updated_at ? new Date(remoteState.updated_at).getTime() : 0;
-  const shouldRestore = !_loadedLocalStateForToken || remoteTime >= localTime;
-
-  if (shouldRestore) {
-    Object.assign(state, remoteState);
-    state.token = requestedToken;
-    try {
-      localStorage.setItem(STORAGE_KEY + '_' + requestedToken, JSON.stringify(state));
-      sessionStorage.setItem('__interview_token', requestedToken);
-    } catch (_) {}
-    render();
-  }
-})();
 
 /* ============================================================
    要上線到 Google Apps Script 時，加上：
