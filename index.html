@@ -2512,6 +2512,8 @@ function pickSingle(qid, value, evt) {
     }
     state.answers[qid] = { value, is_advice_needed: false, updated_at: new Date().toISOString() };
     if (qid === 'payment_provider') maybeSeedCreditCard();
+    // 點選答案後不要把焦點留在卡片 button。否則瀏覽器按 Enter 會再次觸發該 button 的 click。
+    if (el && typeof el.blur === 'function') el.blur();
     if (window.requestIdleCallback) requestIdleCallback(() => saveState());
     else setTimeout(saveState, 0);
     // 3 秒後自動進下一題（給客戶反應時間），過程顯示倒數 + 可提前跳
@@ -2520,27 +2522,51 @@ function pickSingle(qid, value, evt) {
 }
 
 let _autoAdvanceTimer = null;
+let _autoAdvanceNonce = 0;
 function startAutoAdvance(seconds) {
   cancelAutoAdvance();
+  const nonce = ++_autoAdvanceNonce;
+  const startedQid = currentQuestion() ? currentQuestion().id : null;
+
   // 找一個可以掛倒數列的位置：優先卡片內、其次 main 底部
   const card = document.querySelector('#main .card:last-child');
   const mount = card || document.getElementById('main');
-  if (!mount) { _autoAdvanceTimer = setTimeout(next, seconds * 1000); return; }
+  if (!mount) {
+    _autoAdvanceTimer = setTimeout(() => {
+      if (nonce !== _autoAdvanceNonce) return;
+      const q = currentQuestion();
+      if (!q || q.id !== startedQid) return;
+      _autoAdvanceTimer = null;
+      next();
+    }, seconds * 1000);
+    return;
+  }
   const indicator = document.createElement('div');
   indicator.className = 'auto-advance-bar';
   indicator.innerHTML = `
     <span class="aa-text"><span id="aa-count">${seconds}</span> 秒後自動進下一題</span>
-    <button class="aa-skip" onclick="skipAutoAdvance()">立即下一題 →</button>
-    <button class="aa-cancel" onclick="cancelAutoAdvance()">取消</button>
+    <button type="button" class="aa-skip" onclick="skipAutoAdvance()">立即下一題 →</button>
+    <button type="button" class="aa-cancel" onclick="cancelAutoAdvance()">取消</button>
     <div class="aa-progress"><div class="aa-progress-fill" style="animation-duration:${seconds}s"></div></div>
   `;
   mount.appendChild(indicator);
   let remain = seconds;
   _autoAdvanceTimer = setInterval(() => {
+    if (nonce !== _autoAdvanceNonce) return;
+    const q = currentQuestion();
+    if (!q || q.id !== startedQid) { cancelAutoAdvance(); return; }
     remain--;
     const c = document.getElementById('aa-count');
     if (c) c.textContent = remain;
-    if (remain <= 0) { clearInterval(_autoAdvanceTimer); _autoAdvanceTimer = null; next(); }
+    if (remain <= 0) {
+      clearInterval(_autoAdvanceTimer);
+      _autoAdvanceTimer = null;
+      // 先讓這個 nonce 失效，避免手動 Enter / 點按與倒數同時觸發兩次 next()
+      if (nonce === _autoAdvanceNonce) {
+        _autoAdvanceNonce++;
+        next();
+      }
+    }
   }, 1000);
 }
 function skipAutoAdvance() {
@@ -2548,7 +2574,12 @@ function skipAutoAdvance() {
   next();
 }
 function cancelAutoAdvance() {
-  if (_autoAdvanceTimer) { clearInterval(_autoAdvanceTimer); _autoAdvanceTimer = null; }
+  _autoAdvanceNonce++;
+  if (_autoAdvanceTimer) {
+    clearInterval(_autoAdvanceTimer);
+    clearTimeout(_autoAdvanceTimer);
+    _autoAdvanceTimer = null;
+  }
   const bar = document.querySelector('.auto-advance-bar');
   if (bar) bar.remove();
 }
@@ -2636,7 +2667,13 @@ function tagKey(evt, qid) {
     evt.preventDefault();
     evt.stopPropagation();
     const val = evt.target.value.trim().replace(/,$/, '').trim();
-    if (!val) return;
+
+    // 已經至少有一個 tag，而且輸入框是空的：再按一次 Enter 就前往下一題。
+    if (!val) {
+      if (evt.key === 'Enter' && isAnswered(qid)) next();
+      return;
+    }
+
     const tags = Array.isArray(state.answers[qid] && state.answers[qid].value)
       ? [...state.answers[qid].value] : [];
     if (!tags.includes(val)) tags.push(val);
@@ -3632,35 +3669,90 @@ loadState();
 render();
 
 // 全域鍵盤：Enter 快速進下一題。
-// 重要：選項卡點選後焦點會留在 button；再次按 Enter 不應觸發「再點一次取消」，而是進下一題。
+// 使用 capture phase，先於 button 的原生 Enter→click 行為攔截，避免「同一題重新點一次 / 倒數重跑」。
+let _enterNavLock = false;
+function goNextByEnter(e) {
+  if (_enterNavLock) return;
+  _enterNavLock = true;
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+  }
+  cancelAutoAdvance();
+  next();
+  setTimeout(() => { _enterNavLock = false; }, 180);
+}
+
 document.addEventListener('keydown', e => {
   if (e.key !== 'Enter' || e.isComposing) return;
   if (state.currentView !== 'question') return;
 
   const el = document.activeElement;
-  if (el) {
-    // 多行文字保留 Enter 換行
-    if (el.tagName === 'TEXTAREA') return;
-    // 可搜尋下拉與 tag 輸入有自己的 Enter 行為
-    if (el.closest && el.closest('.searchable-select')) return;
-    if (el.dataset && el.dataset.field === 'new-tag') return;
+  const q = currentQuestion();
+  if (!q) return;
 
-    // 已選取的答案卡：Enter = 下一題，不再把答案取消掉
-    if (el.tagName === 'BUTTON') {
-      const isAnswerCard = el.classList.contains('option-card') || el.classList.contains('visual-card');
-      if (isAnswerCard && el.classList.contains('selected')) {
-        e.preventDefault();
-        e.stopPropagation();
-        next();
+  // 多行文字：Enter 保留換行；Ctrl/Cmd + Enter 才前往下一題。
+  if (el && el.tagName === 'TEXTAREA') {
+    if (e.ctrlKey || e.metaKey) goNextByEnter(e);
+    return;
+  }
+
+  // 國家 / Tag 輸入：第一個 Enter 用來新增 tag；空白輸入框再按 Enter 會由 tagKey() 前往下一題。
+  if (el && el.dataset && el.dataset.field === 'new-tag') return;
+
+  // 可搜尋下拉（例如時區）：Enter 選目前第一個符合項目後直接下一題。
+  if (el && el.closest) {
+    const ss = el.closest('.searchable-select');
+    if (ss) {
+      const qid = ss.dataset.qid;
+      const ssQ = getQuestion(qid);
+      const input = ss.querySelector('input');
+      const typed = (input && input.value || '').trim();
+      let picked = null;
+
+      if (ssQ && Array.isArray(ssQ.options) && typed) {
+        picked = ssQ.options.find(o => String(o).toLowerCase() === typed.toLowerCase()) || null;
       }
-      // 其他 button 保留原生 Enter（例如新增、刪除、導覽）
+      if (!picked) {
+        const first = ss.querySelector('.ss-item');
+        if (first) picked = first.dataset.value || first.textContent.trim();
+      }
+      if (picked) setAnswer(qid, picked);
+      else if (!isAnswered(qid)) return;
+
+      ss.classList.remove('open');
+      goNextByEnter(e);
       return;
     }
   }
 
-  e.preventDefault();
-  next();
-});
+  // 底部「下一題」等導覽按鈕保留原生 Enter，避免同一次按鍵執行兩次。
+  if (el && el.tagName === 'BUTTON' && el.closest && el.closest('.floating-nav')) return;
+
+  // 答案卡只要這題已經有答案，Enter 一律前往下一題，絕不再次觸發 onclick。
+  if (el && el.tagName === 'BUTTON' &&
+      (el.classList.contains('option-card') || el.classList.contains('visual-card'))) {
+    if (isAnswered(q.id)) {
+      goNextByEnter(e);
+    }
+    // 尚未回答時保留原生 Enter，讓鍵盤使用者可以用 Enter 選取目前 focus 的選項。
+    return;
+  }
+
+  // 一般文字 / email / 其他欄位：Enter = 下一題。
+  goNextByEnter(e);
+}, true);
+
+// 某些瀏覽器 / Apps Script iframe 會在 Enter keyup 再合成一次 button click。
+// 若剛剛已由 Enter 導航，這裡再擋掉 keyup，避免舊答案卡被第二次觸發。
+document.addEventListener('keyup', e => {
+  if (e.key === 'Enter' && _enterNavLock) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+  }
+}, true);
 
 // 如果設定了 Apps Script URL 且有 token → 背景載入遠端最新版（可能同事在另一台裝置更新過）
 (async () => {
